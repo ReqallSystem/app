@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-import 'mock.dart';
+import '../api/models.dart';
 import 'theme.dart';
 
 class ReqallMark extends StatelessWidget {
@@ -91,12 +92,16 @@ class KindChip extends StatelessWidget {
   }
 }
 
-/// The omarchy panel's Remember form: project picker, title, body, kind.
-/// Concepts present it in their own chrome (sheet, overlay, inline).
-class RememberForm extends StatefulWidget {
-  const RememberForm({super.key, this.onSaved, this.dense = false});
+/// Saves a record; resolves to an error message, or null on success.
+typedef RememberSubmit = Future<String?> Function(Project project, String title, String body, Kind? kind);
 
-  final ValueChanged<String>? onSaved;
+/// The omarchy panel's Remember form: project picker, title, body, kind.
+class RememberForm extends StatefulWidget {
+  const RememberForm({super.key, required this.projects, required this.onSubmit, this.initialProject, this.dense = false});
+
+  final List<Project> projects;
+  final Project? initialProject;
+  final RememberSubmit onSubmit;
   final bool dense;
 
   @override
@@ -104,11 +109,27 @@ class RememberForm extends StatefulWidget {
 }
 
 class _RememberFormState extends State<RememberForm> {
-  Project project = projects.first;
+  Project? project;
   Kind? kind;
   final title = TextEditingController();
   final body = TextEditingController();
   String? status;
+  bool error = false;
+  bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    project = widget.initialProject ?? widget.projects.firstOrNull;
+  }
+
+  @override
+  void didUpdateWidget(covariant RememberForm old) {
+    super.didUpdateWidget(old);
+    if (project == null || !widget.projects.contains(project)) {
+      project = widget.initialProject ?? widget.projects.firstOrNull;
+    }
+  }
 
   @override
   void dispose() {
@@ -128,70 +149,110 @@ class _RememberFormState extends State<RememberForm> {
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Rq.accent)),
       );
 
-  void _save() {
-    if (title.text.trim().isEmpty) {
-      setState(() => status = 'Give it a title');
+  Future<void> _save() async {
+    if (saving) return;
+    final p = project;
+    if (p == null) {
+      setState(() {
+        status = 'Pick a project first';
+        error = true;
+      });
       return;
     }
-    widget.onSaved?.call(title.text.trim());
+    if (title.text.trim().isEmpty) {
+      setState(() {
+        status = 'Give it a title';
+        error = true;
+      });
+      return;
+    }
     setState(() {
-      status = 'Remembered in ${shortProject(project.name)}';
-      title.clear();
-      body.clear();
+      saving = true;
+      status = 'Saving…';
+      error = false;
+    });
+    final failure = await widget.onSubmit(p, title.text.trim(), body.text.trim(), kind);
+    if (!mounted) return;
+    setState(() {
+      saving = false;
+      error = failure != null;
+      status = failure ?? 'Remembered in ${shortProject(p.name)}';
+      if (failure == null) {
+        title.clear();
+        body.clear();
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final gap = SizedBox(height: widget.dense ? 8 : 12);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        DropdownButtonFormField<Project>(
-          initialValue: project,
-          isExpanded: true,
-          dropdownColor: Rq.surface,
-          decoration: _decoration('Project'),
-          style: Rq.mono(size: 13),
-          items: [
-            for (final p in projects) DropdownMenuItem(value: p, child: Text(p.name, overflow: TextOverflow.ellipsis)),
-          ],
-          onChanged: (p) => setState(() => project = p ?? project),
-        ),
-        gap,
-        TextField(controller: title, style: Rq.body(), decoration: _decoration('Title'), onSubmitted: (_) => _save()),
-        gap,
-        TextField(controller: body, style: Rq.body(), decoration: _decoration('Body (optional)'), minLines: 2, maxLines: 5),
-        gap,
-        Wrap(spacing: 6, runSpacing: 6, children: [
-          GestureDetector(
-            onTap: () => setState(() => kind = null),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: kind == null ? Rq.accent.withValues(alpha: 0.2) : Colors.transparent,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: kind == null ? Rq.accent : Rq.border),
+    final sorted = [...widget.projects]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.enter, control: true): _save,
+        const SingleActivator(LogicalKeyboardKey.enter, meta: true): _save,
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButtonFormField<Project>(
+            key: ValueKey(project?.id),
+            initialValue: project,
+            isExpanded: true,
+            dropdownColor: Rq.surface,
+            menuMaxHeight: 360,
+            decoration: _decoration(widget.projects.isEmpty ? 'Loading projects…' : 'Project'),
+            style: Rq.mono(size: 13),
+            items: [
+              for (final p in sorted) DropdownMenuItem(value: p, child: Text(p.name, overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: (p) => setState(() => project = p ?? project),
+          ),
+          gap,
+          TextField(
+            controller: title,
+            autofocus: true,
+            style: Rq.body(),
+            decoration: _decoration('Title'),
+            onSubmitted: (_) => _save(),
+          ),
+          gap,
+          TextField(controller: body, style: Rq.body(), decoration: _decoration('Body (optional)'), minLines: 2, maxLines: 5),
+          gap,
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            GestureDetector(
+              onTap: () => setState(() => kind = null),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: kind == null ? Rq.accent.withValues(alpha: 0.2) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: kind == null ? Rq.accent : Rq.border),
+                ),
+                child: Text('auto', style: Rq.mono(size: 11, color: kind == null ? Rq.accent : Rq.textSoft)),
               ),
-              child: Text('auto', style: Rq.mono(size: 11, color: kind == null ? Rq.accent : Rq.textSoft)),
             ),
-          ),
-          for (final k in Kind.values) KindChip(k, selected: kind == k, onTap: () => setState(() => kind = k)),
-        ]),
-        gap,
-        Row(children: [
-          Expanded(
-            child: Text(status ?? 'Ctrl+Enter to save', style: Rq.mono(size: 11, color: Rq.muted)),
-          ),
-          FilledButton.icon(
-            onPressed: _save,
-            icon: const Icon(Icons.bookmark_add_outlined, size: 18),
-            label: const Text('Remember'),
-            style: FilledButton.styleFrom(backgroundColor: Rq.accent, foregroundColor: Rq.bg),
-          ),
-        ]),
-      ],
+            for (final k in Kind.values) KindChip(k, selected: kind == k, onTap: () => setState(() => kind = k)),
+          ]),
+          gap,
+          Row(children: [
+            Expanded(
+              child: Text(status ?? 'Ctrl+Enter to save',
+                  style: Rq.mono(size: 11, color: error ? Rq.danger : Rq.muted), maxLines: 2, overflow: TextOverflow.ellipsis),
+            ),
+            FilledButton.icon(
+              onPressed: saving ? null : _save,
+              icon: saving
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Rq.bg))
+                  : const Icon(Icons.bookmark_add_outlined, size: 18),
+              label: const Text('Remember'),
+              style: FilledButton.styleFrom(backgroundColor: Rq.accent, foregroundColor: Rq.bg),
+            ),
+          ]),
+        ],
+      ),
     );
   }
 }

@@ -2,10 +2,12 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-import '../shared/mock.dart';
+import '../api/models.dart';
 import '../shared/theme.dart';
 import '../shared/widgets.dart';
+import '../state/session.dart';
 
 /// Stream: the account as a river of memories through time.
 /// A collapsing hero carries the panel's synopsis; below it, memories run
@@ -13,7 +15,9 @@ import '../shared/widgets.dart';
 /// resolve, left to archive, tap to open in place, and a frosted capture bar
 /// floats over everything for Remember.
 class StreamScreen extends StatefulWidget {
-  const StreamScreen({super.key});
+  const StreamScreen({super.key, required this.session});
+
+  final Session session;
 
   @override
   State<StreamScreen> createState() => _StreamScreenState();
@@ -30,13 +34,20 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
   late final Animation<double> _spinTurns = CurvedAnimation(parent: _spin, curve: Curves.easeOutCubic);
   final _scroll = ScrollController();
 
-  late final List<Memory> _items = List.of(memories)..sort((a, b) => a.age.compareTo(b.age));
+  Session get _session => widget.session;
+  List<Memory> get _items => _session.visible.toList();
+
   Kind? _filter;
   final Set<int> _expanded = {};
   int? _flashId;
   int? _pulseId;
-  int _added = 0;
   bool _captureOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_maybeLoadMore);
+  }
 
   @override
   void dispose() {
@@ -48,45 +59,46 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
 
   // ------------------------------------------------------------- actions
 
-  Memory _withStatus(Memory m, String status) => Memory(
-        id: m.id,
-        title: m.title,
-        body: m.body,
-        kind: m.kind,
-        status: status,
-        project: m.project,
-        age: m.age,
-        links: m.links,
-      );
-
-  void _refresh() {
-    _spin.forward(from: 0);
-    _entrance.forward(from: 0);
-    _snack('Refreshed from ${account.host}');
+  void _maybeLoadMore() {
+    if (_scroll.position.extentAfter < 600) _session.loadMore();
   }
 
-  void _toggleResolved(Memory m) {
+  Future<void> _refresh() async {
+    _spin.repeat();
+    await _session.refresh();
+    if (!mounted) return;
+    _spin.forward(from: _spin.value).then((_) => _spin.reset());
+    _entrance.forward(from: 0);
+  }
+
+  Future<void> _toggleResolved(Memory m) async {
     final before = m.status;
     final after = m.status == 'resolved' ? 'open' : 'resolved';
-    _setStatus(m.id, after);
     if (after == 'resolved') _flash(m.id);
-    _snack(after == 'resolved' ? 'Resolved #${m.id}' : 'Reopened #${m.id}', undo: () => _setStatus(m.id, before));
+    final error = await _session.setStatus(m.id, after);
+    if (!mounted) return;
+    if (error != null) {
+      _snack(error);
+      return;
+    }
+    _snack(after == 'resolved' ? 'Resolved #${m.id}' : 'Reopened #${m.id}',
+        undo: () => _undo(m.id, before));
   }
 
-  void _setStatus(int id, String status) {
-    final i = _items.indexWhere((m) => m.id == id);
-    if (i < 0) return;
-    setState(() => _items[i] = _withStatus(_items[i], status));
+  Future<void> _archive(Memory m) async {
+    setState(() => _expanded.remove(m.id));
+    final error = await _session.setStatus(m.id, 'archived');
+    if (!mounted) return;
+    if (error != null) {
+      _snack(error);
+      return;
+    }
+    _snack('Archived #${m.id}', undo: () => _undo(m.id, m.status));
   }
 
-  void _archive(Memory m) {
-    final i = _items.indexWhere((x) => x.id == m.id);
-    if (i < 0) return;
-    setState(() {
-      _items.removeAt(i);
-      _expanded.remove(m.id);
-    });
-    _snack('Archived #${m.id}', undo: () => setState(() => _items.insert(math.min(i, _items.length), m)));
+  Future<void> _undo(int id, String status) async {
+    final error = await _session.setStatus(id, status);
+    if (error != null && mounted) _snack(error);
   }
 
   void _flash(int id) {
@@ -96,22 +108,33 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
     });
   }
 
-  void _remember(String title) {
-    final id = _items.fold<int>(account.memories, (hi, m) => math.max(hi, m.id)) + 1;
+  Future<String?> _remember(Project project, String title, String body, Kind? kind) async {
+    final error = await _session.remember(project: project, title: title, body: body, kind: kind);
+    if (error != null || !mounted) return error;
     setState(() {
-      _items.insert(
-        0,
-        Memory(id: id, title: title, kind: Kind.info, status: 'open', project: projects.first.name, age: Duration.zero),
-      );
-      _pulseId = id;
-      _added++;
+      _pulseId = _session.lastAddedId;
       _captureOpen = false;
       _filter = null;
     });
     if (_scroll.hasClients) {
       _scroll.animateTo(0, duration: const Duration(milliseconds: 500), curve: Curves.easeOutCubic);
     }
-    _snack('Remembered #$id');
+    _snack('Remembered #${_session.lastAddedId} in ${shortProject(project.name)}');
+    return null;
+  }
+
+  Future<void> _openDashboard([int? id]) async {
+    if (_session.demo) {
+      _snack('Demo mode — sign in to open the dashboard');
+      return;
+    }
+    final url = Uri.parse('${_session.server}/dashboard${id == null ? '' : '#records'}');
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication) && mounted) _snack('Could not open $url');
+  }
+
+  void _toggle(Memory m) {
+    setState(() => _expanded.contains(m.id) ? _expanded.remove(m.id) : _expanded.add(m.id));
+    if (_expanded.contains(m.id)) _session.detail(m.id).ignore();
   }
 
   void _snack(String message, {VoidCallback? undo}) {
@@ -140,30 +163,13 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
     return _days[3];
   }
 
-  Memory? _lookup(int id) {
-    for (final m in _items) {
-      if (m.id == id) return m;
-    }
-    for (final m in memories) {
-      if (m.id == id) return m;
-    }
-    return null;
-  }
-
-  /// Outgoing links plus anything that links here.
-  List<int> _linked(Memory m) {
-    final ids = <int>{...m.links};
-    for (final other in [..._items, ...memories]) {
-      if (other.links.contains(m.id)) ids.add(other.id);
-    }
-    ids.remove(m.id);
-    return ids.toList();
-  }
 
   // ------------------------------------------------------------- build
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(listenable: _session, builder: (context, _) => _build(context));
+
+  Widget _build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final pad = math.max(16.0, (width - _maxContent) / 2);
     final visible = _items.where((m) => _filter == null || m.kind == _filter).toList();
@@ -175,6 +181,7 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
     var index = 0;
     final slivers = <Widget>[
       _hero(),
+      if (_session.problem != null) SliverToBoxAdapter(child: _problemBanner(pad)),
       SliverToBoxAdapter(child: _filterRow(pad)),
     ];
     for (final day in _days) {
@@ -198,8 +205,25 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
       slivers.add(SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.all(48),
-          child: Text('Nothing here — the stream is quiet.',
-              textAlign: TextAlign.center, style: Rq.body(color: Rq.muted)),
+          child: _session.loading
+              ? const Center(child: CircularProgressIndicator(color: Rq.accent, strokeWidth: 2))
+              : Text('Nothing here — the stream is quiet.',
+                  textAlign: TextAlign.center, style: Rq.body(color: Rq.muted)),
+        ),
+      ));
+    } else if (_session.hasMore) {
+      slivers.add(SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Center(
+            child: _session.loadingMore
+                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Rq.accent, strokeWidth: 2))
+                : TextButton(
+                    onPressed: _session.loadMore,
+                    child: Text('Load more · ${_session.records.length} of ${_session.total}',
+                        style: Rq.mono(size: 12, color: Rq.accent)),
+                  ),
+          ),
         ),
       ));
     }
@@ -208,7 +232,17 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
     return Scaffold(
       backgroundColor: Rq.bg,
       body: Stack(children: [
-        CustomScrollView(controller: _scroll, slivers: slivers),
+        RefreshIndicator(
+          color: Rq.accent,
+          backgroundColor: Rq.surface,
+          edgeOffset: _heroCollapsed,
+          onRefresh: _refresh,
+          child: CustomScrollView(
+            controller: _scroll,
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: slivers,
+          ),
+        ),
         Positioned(
           left: 0,
           right: 0,
@@ -284,7 +318,9 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
         ),
       );
 
-  int get _total => account.memories + _added;
+  int get _total => _session.summary.memories;
+
+  String get _identity => _session.demo ? 'demo account' : (_session.credentials?.sourceLabel ?? '');
 
   Widget _heroFull() {
     return Padding(
@@ -302,14 +338,14 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
                   width: 7,
                   height: 7,
                   decoration: BoxDecoration(
-                    color: Rq.success,
+                    color: _statusColor,
                     shape: BoxShape.circle,
-                    boxShadow: [BoxShadow(color: Rq.success.withValues(alpha: 0.6), blurRadius: 6)],
+                    boxShadow: [BoxShadow(color: _statusColor.withValues(alpha: 0.6), blurRadius: 6)],
                   ),
                 ),
                 const SizedBox(width: 6),
                 Flexible(
-                  child: Text(account.email,
+                  child: Text(_identity,
                       overflow: TextOverflow.ellipsis, style: Rq.body(size: 12, color: Rq.textSoft)),
                 ),
                 const SizedBox(width: 8),
@@ -319,11 +355,12 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
                     color: Rq.accent.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(999),
                   ),
-                  child: Text(account.host, style: Rq.mono(size: 11, color: Rq.accent)),
+                  child: Text(_session.host, style: Rq.mono(size: 11, color: Rq.accent)),
                 ),
               ]),
             ]),
           ),
+          _accountMenu(),
         ]),
         const SizedBox(height: 18),
         Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -344,11 +381,11 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
                   ),
                 ),
               ),
-              Text('memories', style: Rq.mono(size: 12, color: Rq.muted)),
+              Text(_updatedLabel, style: Rq.mono(size: 12, color: Rq.muted)),
             ]),
           ),
           FilledButton.icon(
-            onPressed: () => _snack('Would open https://${account.host}/dashboard'),
+            onPressed: _openDashboard,
             icon: const Icon(Icons.open_in_new, size: 16),
             label: const Text('Open Reqall'),
             style: FilledButton.styleFrom(
@@ -362,9 +399,9 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
         ]),
         const SizedBox(height: 12),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          _Pill(color: Kind.todo.color, value: account.openTodos, label: 'open todos'),
-          _Pill(color: Kind.issue.color, value: account.openIssues, label: 'open issues'),
-          _Pill(color: Rq.accent, value: account.projects, label: 'projects'),
+          _Pill(color: Kind.todo.color, value: _session.summary.openTodos, label: 'open todos'),
+          _Pill(color: Kind.issue.color, value: _session.summary.openIssues, label: 'open issues'),
+          _Pill(color: Rq.accent, value: _session.summary.projects, label: 'projects'),
         ]),
       ]),
     );
@@ -379,7 +416,83 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
       Text(_fmt(_total), style: Rq.mono(size: 13, weight: FontWeight.w700, color: Rq.accent)),
       const SizedBox(width: 4),
       _refreshButton(size: 34),
+      _accountMenu(),
     ]);
+  }
+
+  Color get _statusColor => switch (_session.problem) {
+        null => _session.demo ? Rq.warning : Rq.success,
+        _ => Rq.danger,
+      };
+
+  String get _updatedLabel {
+    final at = _session.updated;
+    if (at == null) return _session.loading ? 'memories · loading…' : 'memories';
+    final ago = DateTime.now().difference(at);
+    return 'memories · updated ${ago.inSeconds < 30 ? 'just now' : '${relativeAge(ago)} ago'}';
+  }
+
+  Widget _accountMenu() {
+    return PopupMenuButton<String>(
+      tooltip: 'Account',
+      color: Rq.surface,
+      icon: const Icon(Icons.more_vert_rounded, color: Rq.textSoft, size: 20),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: Rq.border)),
+      onSelected: (v) {
+        switch (v) {
+          case 'dashboard':
+            _openDashboard();
+          case 'refresh':
+            _refresh();
+          case 'signout':
+            _session.signOut();
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          enabled: false,
+          child: Text('${_session.host} · $_identity', style: Rq.mono(size: 11, color: Rq.muted)),
+        ),
+        if (!_session.demo) _menuItem('dashboard', Icons.open_in_new, 'Open dashboard'),
+        _menuItem('refresh', Icons.refresh_rounded, 'Refresh'),
+        _menuItem('signout', Icons.logout_rounded, _session.demo ? 'Leave demo' : 'Sign out'),
+      ],
+    );
+  }
+
+  PopupMenuItem<String> _menuItem(String value, IconData icon, String label) => PopupMenuItem(
+        value: value,
+        child: Row(children: [
+          Icon(icon, size: 18, color: Rq.textSoft),
+          const SizedBox(width: 10),
+          Text(label, style: Rq.body(size: 14)),
+        ]),
+      );
+
+  Widget _problemBanner(double pad) {
+    final paused = _session.problem == Problem.paused;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(pad, 12, pad, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+        decoration: BoxDecoration(
+          color: Rq.danger.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Rq.danger.withValues(alpha: 0.4)),
+        ),
+        child: Row(children: [
+          Icon(paused ? Icons.pause_circle_outline : Icons.cloud_off_rounded, color: Rq.danger, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              paused ? 'Access paused: ${_session.problemMessage}' : 'Can’t reach ${_session.host}: ${_session.problemMessage}',
+              style: Rq.body(size: 13, color: Rq.textSoft),
+            ),
+          ),
+          TextButton(onPressed: _refresh, child: Text('Retry', style: Rq.mono(size: 12, color: Rq.accent))),
+        ]),
+      ),
+    );
   }
 
   Widget _refreshButton({double size = 40}) {
@@ -536,7 +649,7 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
     final open = _expanded.contains(m.id);
     final resolved = m.status == 'resolved';
     final flashing = _flashId == m.id;
-    final linked = _linked(m);
+    final linked = _session.loadedDetail(m.id)?.links ?? const <MemoryLink>[];
     final statusColor = switch (m.status) {
       'open' => Rq.accent,
       'resolved' => Rq.success,
@@ -544,7 +657,7 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
     };
 
     return GestureDetector(
-      onTap: () => setState(() => open ? _expanded.remove(m.id) : _expanded.add(m.id)),
+      onTap: () => _toggle(m),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
@@ -607,10 +720,10 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
                 ),
               ]),
             ]),
-            if (m.body.isNotEmpty) ...[
+            if ((m.body ?? '').isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
-                m.body,
+                m.body!,
                 maxLines: open ? null : 2,
                 overflow: open ? null : TextOverflow.ellipsis,
                 style: Rq.body(size: 13, color: Rq.textSoft),
@@ -631,27 +744,38 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
     );
   }
 
-  List<Widget> _details(Memory m, List<int> linked) {
+  List<Widget> _details(Memory m, List<MemoryLink> linked) {
+    final loaded = _session.loadedDetail(m.id) != null;
     return [
       const SizedBox(height: 12),
       Container(height: 1, color: Rq.border),
       const SizedBox(height: 10),
-      if (linked.isEmpty) Text('No links yet', style: Rq.mono(size: 11, color: Rq.muted)),
-      for (final id in linked)
+      if (!loaded)
+        Row(children: [
+          const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: Rq.accent)),
+          const SizedBox(width: 8),
+          Text('Loading body and links…', style: Rq.mono(size: 11, color: Rq.muted)),
+        ])
+      else if (linked.isEmpty)
+        Text('No links yet', style: Rq.mono(size: 11, color: Rq.muted)),
+      for (final link in linked)
         Builder(builder: (context) {
-          final other = _lookup(id);
+          final id = link.otherId;
+          final other = _session.lookup(id);
           return InkWell(
             borderRadius: BorderRadius.circular(8),
-            onTap: () => setState(() => _expanded.add(id)),
+            onTap: other == null ? null : () => _toggle(other),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(children: [
                 if (other != null) KindBadge(other.kind, size: 20) else const SizedBox(width: 20),
                 const SizedBox(width: 8),
                 Text('#$id', style: Rq.mono(size: 11, color: Rq.accent)),
+                const SizedBox(width: 6),
+                Text(link.outgoing ? link.relationship : '← ${link.relationship}', style: Rq.mono(size: 10, color: Rq.muted)),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(other?.title ?? 'not loaded',
+                  child: Text(other?.title ?? 'not in this view',
                       maxLines: 1, overflow: TextOverflow.ellipsis, style: Rq.body(size: 12, color: Rq.textSoft)),
                 ),
               ]),
@@ -668,6 +792,12 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
   }
 
   // ------------------------------------------------------------- capture
+
+  /// Preselect the project of the newest record, as the panel does.
+  Project? get _recentProject {
+    final name = _session.records.firstOrNull?.project;
+    return _session.projects.where((p) => p.name == name).firstOrNull;
+  }
 
   Widget _captureBar() {
     return DecoratedBox(
@@ -739,7 +869,12 @@ class _StreamScreenState extends State<StreamScreen> with TickerProviderStateMix
         ),
       ]),
       const SizedBox(height: 8),
-      RememberForm(dense: true, onSaved: _remember),
+      RememberForm(
+        dense: true,
+        projects: _session.projects,
+        initialProject: _recentProject,
+        onSubmit: _remember,
+      ),
     ]);
   }
 }
