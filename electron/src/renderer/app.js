@@ -148,7 +148,7 @@ function wantDetail() {
   clearTimeout(detailTimer)
   const m = selected()
   const id = m ? m.id : ui.peekId
-  if (id == null || detailOf(id)) return
+  if (id == null || detailOf(id) || (S.detailErrors && S.detailErrors[id])) return
   detailTimer = setTimeout(() => api.detail(id), 120)
 }
 

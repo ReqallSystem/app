@@ -43,6 +43,7 @@ export class Session extends EventEmitter {
     this.signingIn = false
     this.signInError = null
     this.abort = null
+    this.tokenRefresh = null
     this.#resetData()
   }
 
@@ -265,12 +266,14 @@ export class Session extends EventEmitter {
     if (!repo) return undefined
     try {
       if (tokenExpired(this.credentials) && canRefresh(this.credentials)) await this.#refreshToken()
+      const sent = bearer(this.credentials)
       let value
       try {
         value = await op(repo)
       } catch (e) {
         if (!(e instanceof McpError) || e.failure !== Failure.unauthorized || !canRefresh(this.credentials)) throw e
-        await this.#refreshToken()
+        // Another call may have refreshed while this one was in flight.
+        if (bearer(this.credentials) === sent) await this.#refreshToken()
         value = await op(repo)
       }
       if (repo !== this.repo) return undefined
@@ -295,11 +298,23 @@ export class Session extends EventEmitter {
     }
   }
 
-  async #refreshToken() {
-    this.log('→ oauth/token refresh_token')
-    const c = await this.oauth.refresh(this.credentials)
-    this.credentials = c
-    this.store.write(c)
+  /**
+   * One refresh at a time: with rotating refresh tokens, a second concurrent
+   * refresh would spend the already-rotated token, get invalid_grant, and
+   * sign out a session that had just refreshed fine.
+   */
+  #refreshToken() {
+    if (!this.tokenRefresh) {
+      const credentials = this.credentials
+      this.log('→ oauth/token refresh_token')
+      this.tokenRefresh = this.oauth.refresh(credentials).then((c) => {
+        if (this.credentials === credentials) {
+          this.credentials = c
+          this.store.write(c)
+        }
+      }).finally(() => { this.tokenRefresh = null })
+    }
+    return this.tokenRefresh
   }
 
   #expire(why) {
@@ -396,9 +411,13 @@ export class Session extends EventEmitter {
     this.changed()
   }
 
-  /** Body and links for one record, fetched once and folded back into the list. */
+  /**
+   * Body and links for one record, fetched once and folded back into the
+   * list. A failure is remembered until the next refresh, not retried.
+   */
   detail(id) {
     if (this.details.has(id)) return Promise.resolve(this.details.get(id))
+    if (this.detailErrors.has(id)) return Promise.resolve(null)
     if (this.pending.has(id)) return this.pending.get(id)
     const repo = this.repo
     const p = this.#guard((r) => r.detail(id)).then((d) => {
@@ -462,6 +481,10 @@ export class Session extends EventEmitter {
       return why
     }
     if (j >= 0) this.records[j] = { ...this.records[j], status: saved.status, updatedAt: saved.updatedAt }
+    // The header counts open todos and issues; keep them in step.
+    const delta = (saved.status === 'open') - (before.status === 'open')
+    if (delta && before.kind === 'todo') this.summary = { ...this.summary, openTodos: this.summary.openTodos + delta }
+    if (delta && before.kind === 'issue') this.summary = { ...this.summary, openIssues: this.summary.openIssues + delta }
     const d = this.details.get(id)
     if (d) this.details.set(id, { ...d, memory: { ...d.memory, status: saved.status } })
     this.log(`✓ #${id} is ${saved.status}`)

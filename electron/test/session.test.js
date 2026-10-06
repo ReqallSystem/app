@@ -100,6 +100,9 @@ test('detail folds the body into the list and keeps links', async () => {
   assert.equal(await s.detail(1), null, 'a record the server will not return')
   assert.equal(s.snapshot().detailErrors[1], 'not found')
   assert.equal(s.problem, null, 'a tool refusal is not an outage')
+  const before = fake.calls.length
+  assert.equal(await s.detail(1), null)
+  assert.equal(fake.calls.length, before, 'a failed detail is not refetched until a refresh')
 })
 
 test('remember inserts the new record; setStatus is optimistic and reverts on failure', async () => {
@@ -114,6 +117,11 @@ test('remember inserts the new record; setStatus is optimistic and reverts on fa
 
   assert.equal(await s.setStatus(1000, 'resolved'), null)
   assert.equal(s.records.find((m) => m.id === 1000).status, 'resolved')
+  const issues = s.summary.openIssues
+  assert.equal(await s.setStatus(999, 'resolved'), null) // an open issue
+  assert.equal(s.summary.openIssues, issues - 1)
+  assert.equal(await s.setStatus(999, 'open'), null)
+  assert.equal(s.summary.openIssues, issues)
   fake.failWrites = true
   const p = s.setStatus(1000, 'archived')
   assert.equal(s.records.find((m) => m.id === 1000).status, 'archived', 'applied before the server answers')
@@ -145,6 +153,22 @@ test('OAuth tokens refresh once on a 401 and the request is retried', async () =
   assert.equal(s.credentials.accessToken, 'fresh')
   assert.equal(store.read().refreshToken, 'rt-2')
   assert.equal(fake.tokenRequests.at(-1).refresh_token, 'rt-1')
+})
+
+test('concurrent 401s share one token refresh', async () => {
+  fake.validTokens = new Set(['t1'])
+  const store = new MemoryCredentialStore({ server: fake.url, source: 'oauth', accessToken: 't1', refreshToken: 'rt-1', clientId: 'cid' })
+  const { s } = make({ store })
+  await s.start()
+  await ready(s)
+  fake.validTokens = new Set(['t2']) // t1 is revoked server-side
+  fake.tokenResponse = { access_token: 't2', refresh_token: 'rt-2' }
+  const before = fake.tokenRequests.length
+  const [a, b] = await Promise.all([s.detail(1000), s.detail(999), s.loadMore(), s.setStatus(998, 'resolved')])
+  assert.ok(a && b, 'every call succeeded after the refresh')
+  assert.equal(fake.tokenRequests.length - before, 1, 'one refresh for four concurrent 401s')
+  assert.equal(s.phase, 'ready')
+  assert.equal(store.read().refreshToken, 'rt-2')
 })
 
 test('CLI credentials are never refreshed: a 401 signs out', async () => {
