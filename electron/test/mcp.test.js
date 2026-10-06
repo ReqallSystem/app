@@ -64,7 +64,7 @@ test('repository: summary, filtered records, projects, detail with links', async
   assert.equal(page.total, 15)
   assert.ok(page.records.every((m) => m.kind === 'issue' && m.projectId === 2 && m.project === '.user'))
   assert.equal(typeof page.records[0].updatedAt, 'number')
-  assert.deepEqual((await repo.projects()).map((p) => p.name), ['ReqallSystem/app', '.user'])
+  assert.deepEqual((await repo.projects()).map((p) => p.name), ['lumen-labs/atlas-app', '.user'])
   const d = await repo.detail(1000)
   assert.equal(d.memory.body, 'Body of 1000')
   assert.deepEqual(d.links, [{ otherId: 999, relationship: 'implements', outgoing: true }])

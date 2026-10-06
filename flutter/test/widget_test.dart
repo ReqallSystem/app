@@ -47,7 +47,7 @@ void main() {
       await tester.tap(find.text('Try the demo'));
       await pumpFor(tester);
       expect(find.byType(StreamScreen), findsOneWidget);
-      expect(find.textContaining('Flutter app skeleton'), findsOneWidget);
+      expect(find.textContaining('Atlas app skeleton'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 

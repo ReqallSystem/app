@@ -53,7 +53,7 @@ export function relativeAge(ms) {
   return `${Math.floor(d / 365)}y`
 }
 
-/** "ReqallSystem/desktop-app" → "desktop-app"; dotted machine/user projects keep their tail. */
+/** "lumen-labs/atlas-desktop" → "atlas-desktop"; dotted machine/user projects keep their tail. */
 export function shortProject(name) {
   return String(name).split('/').pop()
 }

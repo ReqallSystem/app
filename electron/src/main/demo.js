@@ -7,13 +7,13 @@ const HOUR = 60 * MIN
 const DAY = 24 * HOUR
 
 const PROJECTS = [
-  { id: 8557, name: 'ReqallSystem/app', count: 3 },
-  { id: 4946, name: '.machine/omarchy/fingerskier', count: 212 },
-  { id: 84, name: 'fingerskier/reqall_admin', count: 48 },
-  { id: 17, name: 'osteostrong/believer_app', count: 391 },
-  { id: 144, name: 'turingautomations/pbm_crossx', count: 77 },
-  { id: 12, name: 'ReqallSystem/core', count: 640 },
-  { id: 31, name: 'ReqallSystem/desktop-app', count: 58 },
+  { id: 8557, name: 'lumen-labs/atlas-app', count: 3 },
+  { id: 4946, name: '.machine/devbox/alex', count: 212 },
+  { id: 84, name: 'alex/admin-console', count: 48 },
+  { id: 17, name: 'quarry-co/harvest-app', count: 391 },
+  { id: 144, name: 'tidewater/ledger-sync', count: 77 },
+  { id: 12, name: 'lumen-labs/atlas-core', count: 640 },
+  { id: 31, name: 'lumen-labs/atlas-desktop', count: 58 },
   { id: 2, name: '.user', count: 96 }
 ]
 
@@ -33,25 +33,25 @@ function seed(now) {
   const m = (id, title, kind, status, project, age, body = '') =>
     ({ id, title, body, kind, status, project, projectId: projectId(project), updatedAt: now - age })
   return [
-    m(7910, 'UI: Flutter app UI concept workshop — 4 directions', 'spec', 'open', 'ReqallSystem/app', 3 * MIN,
-      'Hearth, Constellation, Stream and Console, all on shared mock data, served over tailscale.'),
-    m(7908, 'Flutter app skeleton created at flutter/ (reqall_app, org net.reqall)', 'work', 'active', 'ReqallSystem/app', 34 * MIN,
-      'flutter create with android, ios, linux, macos, windows, web. Analyze clean, tests pass.'),
-    m(7902, 'Tray menu ignores left-click on Hyprland app-indicators', 'issue', 'open', 'ReqallSystem/desktop-app', 2 * HOUR + 10 * MIN,
-      'Linux indicators route left-click to the menu; panel open must be a menu item.'),
-    m(7895, 'Credential order: setting > env > ~/.config/reqall/env > config.json', 'arch', 'active', 'ReqallSystem/core', 5 * HOUR,
-      'Parsed, never sourced. Shared by the plugin, desktop app and CLI.'),
-    m(7881, 'Add per-record deep links (dashboard#records/<id>)', 'todo', 'open', 'ReqallSystem/desktop-app', 9 * HOUR),
-    m(7874, 'Mock MCP server covers JSON + SSE replies', 'test', 'active', 'ReqallSystem/desktop-app', 20 * HOUR,
+    m(7910, 'UI: Atlas app concept workshop — 4 directions', 'spec', 'open', 'lumen-labs/atlas-app', 3 * MIN,
+      'Four layouts on shared mock data, reviewed on a phone and a laptop.'),
+    m(7908, 'Atlas app skeleton created for all six platforms', 'work', 'active', 'lumen-labs/atlas-app', 34 * MIN,
+      'Android, iOS, Linux, macOS, Windows and web targets. Analyze clean, tests pass.'),
+    m(7902, 'Tray menu ignores left-click on Linux app indicators', 'issue', 'open', 'lumen-labs/atlas-desktop', 2 * HOUR + 10 * MIN,
+      'Linux indicators route left-click to the menu; opening the panel must be a menu item.'),
+    m(7895, 'Credential order: setting > environment > env file > config file', 'arch', 'active', 'lumen-labs/atlas-core', 5 * HOUR,
+      'Parsed, never sourced. Shared by every client.'),
+    m(7881, 'Add per-record deep links to the dashboard', 'todo', 'open', 'lumen-labs/atlas-desktop', 9 * HOUR),
+    m(7874, 'Mock server covers JSON + SSE replies', 'test', 'active', 'lumen-labs/atlas-desktop', 20 * HOUR,
       'node:test against a local HTTP server; auth states ok/none/invalid/paused/error.'),
-    m(7860, 'Hyprland gaps 8 → 6 on the ultrawide', 'info', 'active', '.machine/omarchy/fingerskier', DAY + 3 * HOUR),
-    m(7841, 'Leaderboard loading-state tests flake on CI', 'issue', 'open', 'osteostrong/believer_app', DAY + 9 * HOUR),
-    m(7833, 'ValueNotifier state, no framework dependency', 'arch', 'active', 'turingautomations/pbm_crossx', 2 * DAY),
-    m(7820, 'Ship admin app record editor', 'todo', 'open', 'fingerskier/reqall_admin', 2 * DAY + 6 * HOUR),
+    m(7860, 'Window gaps 8 → 6 on the wide monitor', 'info', 'active', '.machine/devbox/alex', DAY + 3 * HOUR),
+    m(7841, 'Leaderboard loading-state tests flake on CI', 'issue', 'open', 'quarry-co/harvest-app', DAY + 9 * HOUR),
+    m(7833, 'ValueNotifier state, no framework dependency', 'arch', 'active', 'tidewater/ledger-sync', 2 * DAY),
+    m(7820, 'Ship the admin record editor', 'todo', 'open', 'alex/admin-console', 2 * DAY + 6 * HOUR),
     m(7811, 'Prefer terse commit messages; push the branch you are on', 'info', 'active', '.user', 3 * DAY),
-    m(7799, 'Semantic search boosts the current project', 'spec', 'active', 'ReqallSystem/core', 4 * DAY),
-    m(7790, 'SLEEP consolidation merges near-duplicate info records', 'work', 'active', 'ReqallSystem/core', 5 * DAY),
-    m(6472, 'FEAT: Reqall desktop-app with omarchy_plugin parity', 'spec', 'resolved', '.machine/omarchy/fingerskier', 17 * DAY,
+    m(7799, 'Semantic search boosts the current project', 'spec', 'active', 'lumen-labs/atlas-core', 4 * DAY),
+    m(7790, 'Nightly consolidation merges near-duplicate notes', 'work', 'active', 'lumen-labs/atlas-core', 5 * DAY),
+    m(6472, 'FEAT: Atlas desktop app with tray panel parity', 'spec', 'resolved', '.machine/devbox/alex', 17 * DAY,
       'Tray, panel, keyboard nav, fetcher, settings, tests.')
   ]
 }

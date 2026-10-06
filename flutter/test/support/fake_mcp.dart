@@ -27,7 +27,7 @@ class FakeMcp {
       {
         'id': 1000 - i,
         'project_id': i.isEven ? 1 : 2,
-        'project_name': i.isEven ? 'ReqallSystem/app' : '.user',
+        'project_name': i.isEven ? 'lumen-labs/atlas-app' : '.user',
         'kind': ['spec', 'issue', 'todo', 'info'][i % 4],
         'title': 'Record ${1000 - i}',
         'status': i % 4 == 1 || i % 4 == 2 ? 'open' : 'active',
@@ -36,7 +36,7 @@ class FakeMcp {
   ];
 
   final projects = [
-    {'id': 1, 'name': 'ReqallSystem/app', 'record_count': 30},
+    {'id': 1, 'name': 'lumen-labs/atlas-app', 'record_count': 30},
     {'id': 2, 'name': '.user', 'record_count': 30},
   ];
 

@@ -31,7 +31,7 @@ test('records normalise from tool output', () => {
   const m = toMemory({ id: '7', title: 't', kind: 'bogus', project_name: 'a/b', project_id: 3, updated_at: '2026-10-05T12:00:00Z' })
   assert.deepEqual(m, { id: 7, title: 't', body: null, kind: 'work', status: 'open', project: 'a/b', projectId: 3, updatedAt: Date.UTC(2026, 9, 5, 12) })
   assert.equal(kindFromName('issue'), 'issue')
-  assert.equal(shortProject('ReqallSystem/desktop-app'), 'desktop-app')
+  assert.equal(shortProject('lumen-labs/atlas-desktop'), 'atlas-desktop')
   assert.equal(shortProject('.user'), '.user')
 })
 
