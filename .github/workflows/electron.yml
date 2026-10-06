@@ -1,0 +1,120 @@
+# Tests and packages the Electron console for Linux, macOS and Windows, only
+# when something under electron/ (or this workflow) changes. Pushing a tag
+# like console-v1.2.0 builds everything and attaches the files to a GitHub
+# Release.
+name: Electron console
+
+on:
+  push:
+    branches: [main]
+    tags: ['console-v*']
+    paths:
+      - 'electron/**'
+      - '.github/workflows/electron.yml'
+  pull_request:
+    paths:
+      - 'electron/**'
+      - '.github/workflows/electron.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: electron-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '24'
+
+defaults:
+  run:
+    working-directory: electron
+    shell: bash
+
+jobs:
+  check:
+    name: Test
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+      - run: npm ci
+      - run: npm test
+      # Tagged builds carry the tag's version; others the package version
+      # plus the run number, so every artifact is distinguishable.
+      - id: version
+        name: Version
+        run: |
+          version="$(node -p "require('./package.json').version")-ci.$GITHUB_RUN_NUMBER"
+          if [[ "$GITHUB_REF" == refs/tags/console-v* ]]; then
+            version="${GITHUB_REF#refs/tags/console-v}"
+            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME must look like console-v1.2.3"
+              exit 1
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  package:
+    name: Package (${{ matrix.name }})
+    needs: check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, os: ubuntu-latest, flag: --linux }
+          - { name: macos, os: macos-latest, flag: --mac }
+          - { name: windows, os: windows-latest, flag: --win }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+      - run: npm ci
+      # Unsigned: macOS needs right-click → Open on first launch, Windows
+      # SmartScreen asks once.
+      - run: npx electron-builder ${{ matrix.flag }} --publish never -c.extraMetadata.version=${{ needs.check.outputs.version }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: console-${{ matrix.name }}
+          path: |
+            electron/dist/*.AppImage
+            electron/dist/*.tar.gz
+            electron/dist/*.dmg
+            electron/dist/*.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/console-v')
+    needs: [check, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "Reqall Console ${{ needs.check.outputs.version }}" --generate-notes

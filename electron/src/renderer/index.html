@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; script-src 'self'; connect-src 'none'">
+  <title>Reqall</title>
+  <link rel="stylesheet" href="../../assets/fonts/fonts.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="status" id="status"></header>
+
+    <main class="screen login" id="login" hidden>
+      <div class="box active login-box" data-title="sign in">
+        <div class="wordmark">re<span>qall</span></div>
+        <p class="tagline">your project memory, at the terminal.</p>
+        <div class="options" id="login-options"></div>
+        <label class="field server-field">
+          <span>server</span>
+          <input id="server" type="text" spellcheck="false" autocomplete="off" placeholder="www.reqall.net">
+        </label>
+        <p class="login-message" id="login-message" hidden></p>
+        <p class="login-note" id="login-note" hidden></p>
+      </div>
+    </main>
+
+    <main class="screen console" id="console" hidden>
+      <section class="box actions-box" id="actions-box" data-title="actions">
+        <div class="actions" id="actions"></div>
+        <button class="palette-button glow" id="palette-button" type="button"></button>
+      </section>
+      <div class="panes">
+        <section class="box records-box" id="records-box" data-title="records">
+          <div class="chips" id="chips" hidden></div>
+          <div class="row head"><span class="c-kind">KIND</span><span class="c-id">ID</span><span class="c-title">TITLE</span><span class="c-project">PROJECT</span><span class="c-age">AGE</span></div>
+          <div class="rows" id="rows"></div>
+        </section>
+        <section class="box preview-box" id="preview-box" data-title="preview">
+          <div class="preview" id="preview"></div>
+        </section>
+      </div>
+    </main>
+
+    <section class="box log-box" id="log-box" data-title="log">
+      <div class="log" id="log"></div>
+    </section>
+    <footer class="keys" id="keys"></footer>
+  </div>
+
+  <div class="overlay" id="palette" hidden>
+    <div class="box active palette" data-title="command" id="palette-box">
+      <div class="prompt"><span class="glow">›</span><input id="palette-input" type="text" spellcheck="false" autocomplete="off" placeholder="remember, kind:issue, project:…, #7910"></div>
+      <div class="rule"></div>
+      <div class="palette-rows" id="palette-rows"></div>
+    </div>
+  </div>
+
+  <div class="overlay center" id="remember" hidden>
+    <form class="box active remember" data-title="remember" data-trail="esc" id="remember-form">
+      <select id="remember-project" aria-label="Project"></select>
+      <input id="remember-title" type="text" placeholder="Title" autocomplete="off" maxlength="500">
+      <textarea id="remember-body" rows="4" placeholder="Body (optional)"></textarea>
+      <div class="kind-chips" id="remember-kinds"></div>
+      <div class="remember-foot">
+        <span id="remember-status">ctrl+⏎ to save</span>
+        <button type="submit" class="primary" id="remember-save">⏎ remember</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="crt" aria-hidden="true"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
