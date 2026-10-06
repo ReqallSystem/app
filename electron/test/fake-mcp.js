@@ -20,14 +20,14 @@ export async function startFakeMcp({ validTokens = ['good-key'], sse = false } =
     records: Array.from({ length: 60 }, (_, i) => ({
       id: 1000 - i,
       project_id: i % 2 === 0 ? 1 : 2,
-      project_name: i % 2 === 0 ? 'ReqallSystem/app' : '.user',
+      project_name: i % 2 === 0 ? 'lumen-labs/atlas-app' : '.user',
       kind: ['spec', 'issue', 'todo', 'info'][i % 4],
       title: `Record ${1000 - i}`,
       status: i % 4 === 1 || i % 4 === 2 ? 'open' : 'active',
       updated_at: new Date(Date.UTC(2026, 9, 5, 12) - i * 3600_000).toISOString()
     })),
     projects: [
-      { id: 1, name: 'ReqallSystem/app', record_count: 30 },
+      { id: 1, name: 'lumen-labs/atlas-app', record_count: 30 },
       { id: 2, name: '.user', record_count: 30 }
     ],
     links: [{ source_table: 'records', source_id: 1000, target_table: 'records', target_id: 999, relationship: 'implements' }]

@@ -126,5 +126,5 @@ String relativeAge(Duration age) {
   return '${age.inDays ~/ 365}y';
 }
 
-/// "ReqallSystem/desktop-app" → "desktop-app"; dotted machine/user projects keep their tail.
+/// "lumen-labs/atlas-desktop" → "atlas-desktop"; dotted machine/user projects keep their tail.
 String shortProject(String name) => name.split('/').last;
