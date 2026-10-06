@@ -195,3 +195,30 @@ class _RememberFormState extends State<RememberForm> {
     );
   }
 }
+
+/// A small floating "← concepts" chip so each concept can get back to the picker.
+class ConceptsButton extends StatelessWidget {
+  const ConceptsButton({super.key, this.label});
+
+  final String? label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Rq.bgDeep.withValues(alpha: 0.8),
+      shape: const StadiumBorder(side: BorderSide(color: Rq.border)),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: () => Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.grid_view_rounded, size: 14, color: Rq.accent),
+            const SizedBox(width: 6),
+            Text(label ?? 'concepts', style: Rq.mono(size: 11, color: Rq.textSoft)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
