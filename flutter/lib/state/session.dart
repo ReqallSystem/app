@@ -62,6 +62,10 @@ class Session extends ChangeNotifier {
   String? signInError;
 
   String? get oauthUnavailable => platform.oauthUnavailableReason();
+
+  /// False on web pages that are not a secure context: sign-in still works,
+  /// but only until the tab closes.
+  bool get credentialsPersist => platform.credentialsPersist();
   String get server => credentials?.server ?? kDefaultServer;
   String get host => demo ? 'demo' : (credentials?.host ?? Uri.parse(kDefaultServer).host);
 
@@ -193,6 +197,8 @@ class Session extends ChangeNotifier {
     demo = false;
     _repo = null;
     summary = AccountSummary.empty;
+    loading = false;
+    loadingMore = false;
     records = [];
     total = 0;
     projects = [];
@@ -214,18 +220,21 @@ class Session extends ChangeNotifier {
     if (repo == null) return null;
     try {
       if (credentials?.tokenExpired == true && credentials!.canRefresh) await _refreshToken();
+      T value;
       try {
-        final value = await op(repo);
-        if (problem != null) {
-          problem = null;
-          problemMessage = null;
-        }
-        return value;
+        value = await op(repo);
       } on McpException catch (e) {
         if (e.failure != McpFailure.unauthorized || !(credentials?.canRefresh ?? false)) rethrow;
         await _refreshToken();
-        return await op(repo);
+        value = await op(repo);
       }
+      // Signed out or switched accounts while this was in flight.
+      if (!identical(repo, _repo)) return null;
+      if (problem != null) {
+        problem = null;
+        problemMessage = null;
+      }
+      return value;
     } on McpException catch (e) {
       if (!identical(repo, _repo)) return null; // signed out meanwhile
       switch (e.failure) {
@@ -241,7 +250,7 @@ class Session extends ChangeNotifier {
       notifyListeners();
       return null;
     } on OAuthException catch (e) {
-      await _expire(e.message);
+      if (identical(repo, _repo)) await _expire(e.message);
       return null;
     }
   }
@@ -264,11 +273,13 @@ class Session extends ChangeNotifier {
     if (_repo == null || loading) return;
     loading = true;
     notifyListeners();
+    final started = _repo;
     final result = await _guard((repo) => Future.wait([
           repo.summary(),
           repo.records(limit: pageSize),
           repo.projects(),
         ]));
+    if (!identical(started, _repo)) return; // a newer session owns the flags now
     loading = false;
     if (result != null) {
       summary = result[0] as AccountSummary;
@@ -290,7 +301,9 @@ class Session extends ChangeNotifier {
     if (_repo == null || loadingMore || !hasMore) return;
     loadingMore = true;
     notifyListeners();
+    final started = _repo;
     final page = await _guard((repo) => repo.records(limit: pageSize, offset: records.length));
+    if (!identical(started, _repo)) return;
     loadingMore = false;
     if (page != null) {
       final seen = records.map((m) => m.id).toSet();

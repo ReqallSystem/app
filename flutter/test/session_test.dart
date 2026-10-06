@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reqall_app/api/demo_repository.dart';
 import 'package:reqall_app/auth/credentials.dart';
@@ -14,7 +16,13 @@ String jwt(DateTime exp) {
   return '${part({'alg': 'none'})}.${part({'exp': exp.millisecondsSinceEpoch ~/ 1000})}.sig';
 }
 
-Session session(FakeMcp fake, {MemoryCredentialStore? store, Credentials? cli, Credentials? oauthResult}) => Session(
+/// Secure storage as it behaves on an insecure web origin: every call throws.
+class _InsecureStorage implements FlutterSecureStorage {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => Future<Never>.error(UnsupportedError('not a secure context'));
+}
+
+Session session(FakeMcp fake, {CredentialStore? store, Credentials? cli, Credentials? oauthResult}) => Session(
       store: store ?? MemoryCredentialStore(),
       httpClient: fake.client,
       findCli: () async => cli,
@@ -217,5 +225,41 @@ void main() {
     await s.signInWithOAuth();
     expect(s.phase, Phase.signedOut);
     expect(s.signInError, 'Sign-in was cancelled');
+  });
+
+  test('sign-in still works when credentials cannot be saved', () async {
+    final store = SecureCredentialStore(_InsecureStorage());
+    expect(await store.read(), isNull);
+    final s = session(FakeMcp(), store: store);
+    await s.start();
+    await s.signInWithApiKey('good-key');
+    await settle(s);
+    expect(s.phase, Phase.ready);
+    expect(s.records, isNotEmpty);
+    await s.signOut();
+    expect(s.phase, Phase.signedOut);
+  });
+
+  test('a slow refresh from a previous account never lands in the next one', () async {
+    final fake = FakeMcp(validTokens: {'key-a', 'key-b'});
+    final s = session(fake);
+    await s.start();
+    await s.signInWithApiKey('key-a');
+    final gate = Completer<void>();
+    fake.hold = gate.future;
+    final stale = s.refresh(); // A's refresh, held in flight
+    await Future<void>.delayed(Duration.zero);
+    await s.signOut();
+    fake.hold = null;
+    fake.records.removeRange(10, fake.records.length); // B sees a different account
+    await s.signInWithApiKey('key-b');
+    await settle(s);
+    expect(s.total, 10);
+    gate.complete();
+    await stale;
+    await settle(s);
+    expect(s.total, 10, reason: "A's late reply is discarded");
+    expect(s.records, hasLength(10));
+    expect(s.loading, isFalse);
   });
 }

@@ -57,3 +57,7 @@ Future<Credentials?> completeOAuthRedirect(OAuthApi api) async {
 }
 
 Future<Credentials?> findCliCredentials() async => null;
+
+/// Secure storage on web needs WebCrypto, which only exists in a secure
+/// context; over plain http on the network a session lasts for the tab.
+bool credentialsPersist() => web.window.isSecureContext;

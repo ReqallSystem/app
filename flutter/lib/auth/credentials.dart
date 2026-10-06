@@ -109,8 +109,18 @@ abstract class CredentialStore {
   Future<void> clear();
 }
 
+/// Keychain / libsecret / Credential Manager on native; WebCrypto-wrapped
+/// localStorage on web. Failures are swallowed: the web store only works in
+/// a secure context (HTTPS or localhost), and a session that cannot be saved
+/// should still work until the tab closes rather than block sign-in.
 class SecureCredentialStore implements CredentialStore {
-  SecureCredentialStore([FlutterSecureStorage? storage]) : _storage = storage ?? const FlutterSecureStorage();
+  SecureCredentialStore([FlutterSecureStorage? storage])
+      : _storage = storage ??
+            const FlutterSecureStorage(
+              // The data-protection keychain needs a keychain-access-groups
+              // entitlement (and so a signing team); the login keychain does not.
+              mOptions: MacOsOptions(usesDataProtectionKeychain: false),
+            );
 
   static const _key = 'reqall.credentials';
   final FlutterSecureStorage _storage;
@@ -127,10 +137,22 @@ class SecureCredentialStore implements CredentialStore {
   }
 
   @override
-  Future<void> write(Credentials credentials) => _storage.write(key: _key, value: jsonEncode(credentials.toJson()));
+  Future<void> write(Credentials credentials) async {
+    try {
+      await _storage.write(key: _key, value: jsonEncode(credentials.toJson()));
+    } catch (e) {
+      debugPrint('reqall: credentials not saved: $e');
+    }
+  }
 
   @override
-  Future<void> clear() => _storage.delete(key: _key);
+  Future<void> clear() async {
+    try {
+      await _storage.delete(key: _key);
+    } catch (e) {
+      debugPrint('reqall: credentials not cleared: $e');
+    }
+  }
 }
 
 class MemoryCredentialStore implements CredentialStore {

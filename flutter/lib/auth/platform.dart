@@ -6,6 +6,7 @@
 ///                             web: navigates away, completes on return
 ///   completeOAuthRedirect()   web: finishes a sign-in the page came back from
 ///   findCliCredentials()      desktop: REQALL_API_KEY / env file / config.json
+///   credentialsPersist()      false on web pages that are not a secure context
 library;
 
 export 'platform_stub.dart'

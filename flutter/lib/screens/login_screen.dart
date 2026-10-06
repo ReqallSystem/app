@@ -201,9 +201,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Rq.accent)),
             ),
           ),
-      ] else
+      ] else ...[
         Text('Requests go through this page\'s host to ${Uri.parse(kDefaultServer).host}.',
             textAlign: TextAlign.center, style: Rq.mono(size: 11, color: Rq.muted)),
+        if (!_session.credentialsPersist) ...[
+          const SizedBox(height: 6),
+          Text('This page isn\'t HTTPS, so your sign-in lasts only until the tab closes.',
+              textAlign: TextAlign.center, style: Rq.mono(size: 11, color: Rq.warning)),
+        ],
+      ],
       const SizedBox(height: 22),
       Center(
         child: TextButton.icon(

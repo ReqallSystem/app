@@ -58,10 +58,17 @@ Future<Credentials?> runOAuth(OAuthApi api, String server) async {
 
 Future<Credentials?> completeOAuthRedirect(OAuthApi api) async => null;
 
+bool credentialsPersist() => true;
+
 Future<Credentials?> findCliCredentials() async {
   if (!_desktop) return null;
   final env = Platform.environment;
-  final home = env['HOME'] ?? env['USERPROFILE'] ?? '';
+  var home = env['HOME'] ?? env['USERPROFILE'] ?? '';
+  // A sandboxed macOS app sees HOME inside its container; the CLI's files
+  // live in the real home, readable through the entitlements' read-only
+  // home-relative exceptions for these two folders.
+  final container = home.indexOf('/Library/Containers/');
+  if (container > 0) home = home.substring(0, container);
   final dir = env['REQALL_CONFIG_DIR'] ??
       (Platform.isWindows
           ? '${env['APPDATA'] ?? '$home\\AppData\\Roaming'}\\reqall'

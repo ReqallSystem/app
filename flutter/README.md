@@ -20,7 +20,10 @@ The Reqall app: your project memory as one stream (the Stream design from
 | Web over the network (e.g. tailscale) | ✗ server only allows loopback redirects | ✓ | |
 | Android / iOS | ✗ needs a custom-scheme redirect allowed on the server | ✓ | |
 
-Credentials are kept with `flutter_secure_storage` (libsecret on Linux).
+Credentials are kept with `flutter_secure_storage` (libsecret on Linux, the
+login keychain on macOS). On web it needs a secure context (HTTPS or
+localhost); over plain http on the network a sign-in lasts until the tab
+closes, and the login screen says so.
 OAuth tokens refresh on expiry or on a 401. CLI credentials are used as they
 are and never refreshed, since refreshing would rotate the CLI's token out
 from under it. "Try the demo" runs on the mock account without a server.

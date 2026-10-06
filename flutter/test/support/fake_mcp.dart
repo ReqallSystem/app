@@ -11,6 +11,9 @@ class FakeMcp {
   Set<String> validTokens;
   bool sse;
   int? forceStatus;
+
+  /// When set, tools/call replies wait for it, to hold requests in flight.
+  Future<void>? hold;
   bool failWrites = false;
   final calls = <String>[];
   final tokenRequests = <Map<String, String>>[];
@@ -47,6 +50,7 @@ class FakeMcp {
           ? http.Response(jsonEncode({'error': 'invalid_grant'}), 400)
           : http.Response(jsonEncode(r), 200, headers: {'content-type': 'application/json'});
     }
+    if (hold != null) await hold;
     final auth = req.headers['Authorization'] ?? '';
     authHeaders.add(auth);
     if (forceStatus != null) return http.Response('{"message":"forced"}', forceStatus!);

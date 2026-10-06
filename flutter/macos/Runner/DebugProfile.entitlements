@@ -10,5 +10,11 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- Read the Reqall CLI / plugin credentials for "Continue with CLI login". -->
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+	<array>
+		<string>/.config/reqall/</string>
+		<string>/Library/Application Support/reqall/</string>
+	</array>
 </dict>
 </plist>
