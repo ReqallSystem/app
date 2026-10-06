@@ -111,7 +111,7 @@ function logLine(line) {
   if (s.startsWith('$')) return `<span class="cmd">${esc(s)}</span>`
   if (s.startsWith('✓')) return `<span class="done">${esc(s)}</span>`
   if (s.startsWith('✗')) return `<span class="fail">${esc(s)}</span>`
-  const ok = s.indexOf('200 OK')
+  const ok = s.search(/\b2\d\d (OK|Created|No Content) \d+ms$/)
   if (ok >= 0) return `${esc(s.slice(0, ok))}<span class="ok200">${esc(s.slice(ok))}</span>`
   return esc(s)
 }
@@ -408,10 +408,9 @@ function renderKeys() {
 function loginOptions() {
   return [
     { id: 'browser', key: 'b', label: 'sign in with the browser' },
-    S.cli && { id: 'cli', key: 'c', label: 'continue with CLI login', hint: `${S.cli.host} · ${S.cli.origin}` },
     { id: 'key', key: 'a', label: 'api key' },
     { id: 'demo', key: 'd', label: 'try the demo', hint: 'mock account · offline' }
-  ].filter(Boolean)
+  ]
 }
 
 const serverValue = () => $('server').value.trim() || DEFAULT_SERVER
@@ -463,7 +462,6 @@ function chooseLogin(id) {
   if (S.signingIn) return
   ui.login = Math.max(0, loginOptions().findIndex((o) => o.id === id))
   if (id === 'browser') { ui.signingWith = 'browser'; api.signInWithBrowser(serverValue()) }
-  else if (id === 'cli') { ui.signingWith = 'cli'; api.continueWithCli() }
   else if (id === 'demo') api.startDemo()
   else if (id === 'key') {
     const input = $('api-key')

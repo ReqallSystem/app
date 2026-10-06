@@ -1,9 +1,9 @@
 import '../shared/theme.dart';
-import 'mcp_client.dart';
+import 'api_client.dart';
 import 'models.dart';
 
 /// Everything the app reads from or writes to Reqall. [LiveRepository] talks
-/// to the MCP endpoint; the demo repository serves the mock account.
+/// to the REST API; the demo repository serves the mock account.
 abstract class ReqallRepository {
   Future<AccountSummary> summary();
   Future<RecordPage> records({int limit = 50, int offset = 0});
@@ -15,56 +15,53 @@ abstract class ReqallRepository {
 }
 
 class LiveRepository implements ReqallRepository {
-  LiveRepository(this.mcp);
+  LiveRepository(this.api);
 
-  final McpClient mcp;
+  final ApiClient api;
 
-  static int _total(Map<String, dynamic> data) => (data['total'] as num?)?.toInt() ?? 0;
+  static int _total(dynamic data) => data is Map ? (data['total'] as num?)?.toInt() ?? 0 : 0;
+
+  static Iterable<Map<String, dynamic>> _list(dynamic data, String key) =>
+      ((data is Map ? data[key] : data) as List? ?? const []).whereType<Map<String, dynamic>>();
+
+  static Map<String, dynamic> _object(dynamic data) =>
+      data is Map<String, dynamic> ? data : throw const ApiException(ApiFailure.server, 'Unexpected response');
 
   @override
   Future<AccountSummary> summary() async {
     final results = await Future.wait([
-      mcp.call('list_records', {'limit': 1}),
-      mcp.call('list_records', {'limit': 1, 'status': 'open', 'kind': 'todo'}),
-      mcp.call('list_records', {'limit': 1, 'status': 'open', 'kind': 'issue'}),
-      mcp.call('list_projects', {'limit': 1}),
+      api.get('/records', {'limit': 1}),
+      api.get('/records', {'limit': 1, 'status': 'open', 'kind': 'todo'}),
+      api.get('/records', {'limit': 1, 'status': 'open', 'kind': 'issue'}),
+      api.get('/projects'),
     ]);
     return AccountSummary(
       memories: _total(results[0]),
       openTodos: _total(results[1]),
       openIssues: _total(results[2]),
-      projects: _total(results[3]),
+      projects: _list(results[3], 'projects').length,
     );
   }
 
   @override
   Future<RecordPage> records({int limit = 50, int offset = 0}) async {
-    final data = await mcp.call('list_records', {'limit': limit.clamp(1, 100), 'offset': offset});
-    final list = (data['records'] as List? ?? const []).whereType<Map<String, dynamic>>().map(Memory.fromJson).toList();
-    return RecordPage(list, _total(data));
+    final data = await api.get('/records', {'limit': limit.clamp(1, 100), 'offset': offset});
+    return RecordPage(_list(data, 'records').map(Memory.fromJson).toList(), _total(data));
   }
 
+  /// One unpaged array.
   @override
-  Future<List<Project>> projects() async {
-    final out = <Project>[];
-    for (var offset = 0; offset < 1000; offset += 100) {
-      final data = await mcp.call('list_projects', {'limit': 100, 'offset': offset});
-      final page = (data['projects'] as List? ?? const []).whereType<Map<String, dynamic>>().map(Project.fromJson).toList();
-      out.addAll(page);
-      if (page.length < 100 || out.length >= _total(data)) break;
-    }
-    return out;
-  }
+  Future<List<Project>> projects() async => _list(await api.get('/projects'), 'projects').map(Project.fromJson).toList();
 
   @override
   Future<MemoryDetail> detail(int id) async {
     final results = await Future.wait([
-      mcp.call('get_record', {'id': id}),
-      mcp.call('list_links', {'entity_id': id, 'entity_type': 'records', 'direction': 'both', 'limit': 50}),
+      api.get('/records/$id'),
+      api.get('/records/$id/links', {'direction': 'both', 'limit': 50}),
     ]);
-    final memory = Memory.fromJson(results[0]['record'] as Map<String, dynamic>);
+    final memory = Memory.fromJson(_object(results[0]));
     final links = <MemoryLink>[];
-    for (final l in (results[1]['links'] as List? ?? const []).whereType<Map<String, dynamic>>()) {
+    for (final l in _list(results[1], 'links')) {
       final outgoing = l['source_table'] == 'records' && (l['source_id'] as num?)?.toInt() == id;
       final otherTable = outgoing ? l['target_table'] : l['source_table'];
       if (otherTable != 'records') continue;
@@ -74,24 +71,25 @@ class LiveRepository implements ReqallRepository {
     return MemoryDetail(memory, links);
   }
 
+  /// The create response has no project_name, so it comes from [project].
   @override
   Future<Memory> remember({required Project project, required String title, String body = '', Kind? kind}) async {
-    final data = await mcp.call('upsert_record', {
+    final data = await api.post('/records', {
       'project_id': project.id,
       'title': title,
       if (body.isNotEmpty) 'body': body,
       'kind': ?kind?.name,
     });
-    final memory = Memory.fromJson(data['record'] as Map<String, dynamic>);
+    final memory = Memory.fromJson(_object(data));
     return memory.project.isEmpty ? memory.copyWith(project: project.name) : memory;
   }
 
+  /// The update response has no project_name: [Memory.project] comes back
+  /// empty, and callers keep the name they already have.
   @override
-  Future<Memory> setStatus(int id, String status) async {
-    final data = await mcp.call('upsert_record', {'id': id, 'status': status});
-    return Memory.fromJson(data['record'] as Map<String, dynamic>);
-  }
+  Future<Memory> setStatus(int id, String status) async =>
+      Memory.fromJson(_object(await api.patch('/records/$id', {'status': status})));
 
   @override
-  void close() => mcp.close();
+  void close() => api.close();
 }

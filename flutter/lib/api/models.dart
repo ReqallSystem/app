@@ -1,7 +1,9 @@
 import '../shared/theme.dart';
 
-/// One Reqall record, as list_records / get_record / upsert_record return it.
-/// list_records carries no body, so [body] is null until get_record fills it.
+/// One Reqall record, as GET /records, GET /records/:id and POST / PATCH
+/// /records return it. The list carries no body, so [body] is null until the
+/// single-record GET fills it; the write responses carry no project_name, so
+/// [project] is empty on those until the caller fills it in.
 class Memory {
   const Memory({
     required this.id,

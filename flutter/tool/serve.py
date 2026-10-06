@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Serve the Flutter web build and proxy the Reqall API on the same origin.
 
-The Reqall server's CORS list only admits claude.ai and cursor.com, so a
-browser build served from anywhere else cannot call /mcp directly. This
-serves build/web and forwards /mcp, /oauth/* and /.well-known/* to the real
-server, which makes every API call same-origin.
+The Reqall server does not send CORS headers for its REST API yet
+(fingerskier/reqall_net#124), so a browser build cannot call /api/v1
+cross-origin. This serves build/web and forwards /api/*, /oauth/* and
+/.well-known/* to the real server, which makes every API call same-origin.
 
     python3 tool/serve.py --bind 100.92.247.99 --port 8687
     python3 tool/serve.py --upstream https://www.reqall.net --dir build/web
@@ -20,7 +20,7 @@ import os
 import sys
 import urllib.parse
 
-PROXIED = ('/mcp', '/oauth/', '/.well-known/')
+PROXIED = ('/api/', '/oauth/', '/.well-known/')
 HOP_BY_HOP = {
     'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailers',
     'transfer-encoding', 'upgrade', 'content-length', 'host', 'origin', 'referer', 'cookie',
@@ -36,7 +36,7 @@ def make_handler(directory, upstream):
 
         def _proxied(self):
             path = self.path.split('?', 1)[0]
-            return path == '/mcp' or any(path.startswith(p) for p in PROXIED)
+            return any(path.startswith(p) for p in PROXIED)
 
         def _proxy(self):
             length = int(self.headers.get('Content-Length') or 0)
@@ -75,6 +75,9 @@ def make_handler(directory, upstream):
             self._proxy() if self._proxied() else super().do_HEAD()
 
         def do_POST(self):
+            self._proxy() if self._proxied() else self.send_error(405)
+
+        def do_PATCH(self):
             self._proxy() if self._proxied() else self.send_error(405)
 
         def do_OPTIONS(self):

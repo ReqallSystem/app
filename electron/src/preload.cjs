@@ -21,7 +21,6 @@ contextBridge.exposeInMainWorld('reqall', {
   setStatus: invoke('reqall:set-status'),
   signInWithKey: invoke('reqall:sign-in-key'),
   signInWithBrowser: invoke('reqall:sign-in-oauth'),
-  continueWithCli: invoke('reqall:sign-in-cli'),
   cancelSignIn: invoke('reqall:cancel-sign-in'),
   startDemo: invoke('reqall:demo'),
   signOut: invoke('reqall:sign-out'),

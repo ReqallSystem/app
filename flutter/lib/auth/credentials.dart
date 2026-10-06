@@ -5,12 +5,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 const kDefaultServer = 'https://www.reqall.net';
 
-enum CredentialSource { apiKey, oauth, cli }
+enum CredentialSource { apiKey, oauth }
 
 /// What the app signs requests with. [server] is the canonical Reqall host
 /// (dashboard links, OAuth resource); [apiBase] is where requests actually
 /// go, which on web is this page's own origin so a same-origin proxy can
-/// forward them (the server's CORS list only admits claude.ai and cursor.com).
+/// forward them (the server does not send CORS headers for /api yet).
 class Credentials {
   const Credentials({
     required this.server,
@@ -36,7 +36,6 @@ class Credentials {
   String get sourceLabel => switch (source) {
         CredentialSource.apiKey => 'API key',
         CredentialSource.oauth => 'signed in',
-        CredentialSource.cli => 'CLI credentials',
       };
 
   /// True when the access token is a JWT that expires within a minute.
@@ -65,6 +64,8 @@ class Credentials {
         'client_id': ?clientId,
       };
 
+  /// Null for anything unusable, including the retired `cli` source, which
+  /// leaves the app signed out.
   static Credentials? fromJson(Map<String, dynamic> j) {
     final source = CredentialSource.values.where((s) => s.name == j['source']).firstOrNull;
     if (source == null) return null;

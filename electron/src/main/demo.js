@@ -1,6 +1,9 @@
 // The mock account from the design workshop (designs/lib/shared/mock.dart),
 // served behind the repository interface so the console runs offline
-// ("try the demo"). Requests are logged like real ones, with a fake latency.
+// ("try the demo"). Requests are logged like the REST calls a live account
+// would make, with a fake latency.
+
+import { apiPath } from './api.js'
 
 const MIN = 60_000
 const HOUR = 60 * MIN
@@ -65,42 +68,42 @@ export class DemoRepository {
     this.now = now
   }
 
-  async #call(name, args, fn) {
+  async #call(method, path, query, fn, status = 200) {
     const started = Date.now()
     const ms = this.latencyMs / 2 + Math.random() * this.latencyMs
     await new Promise((r) => setTimeout(r, ms))
     const value = fn()
-    this.onLog({ name, args, status: 200, ms: Date.now() - started })
+    this.onLog({ method, path: apiPath(path, query), status, ms: Date.now() - started })
     return value
   }
 
   async summary() {
     const [memories, openTodos, openIssues, projects] = await Promise.all([
-      this.#call('list_records', { limit: 1 }, () => 7910 + this.added),
-      this.#call('list_records', { limit: 1, status: 'open', kind: 'todo' }, () => 23),
-      this.#call('list_records', { limit: 1, status: 'open', kind: 'issue' }, () => 9),
-      this.#call('list_projects', { limit: 1 }, () => 41)
+      this.#call('GET', '/records', { limit: 1 }, () => 7910 + this.added),
+      this.#call('GET', '/records', { limit: 1, status: 'open', kind: 'todo' }, () => 23),
+      this.#call('GET', '/records', { limit: 1, status: 'open', kind: 'issue' }, () => 9),
+      this.#call('GET', '/projects', {}, () => 41)
     ])
     return { memories, openTodos, openIssues, projects }
   }
 
   records({ limit = 50, offset = 0, kind, projectId } = {}) {
     const args = { limit, ...(offset ? { offset } : {}), ...(kind ? { kind } : {}), ...(projectId != null ? { project_id: projectId } : {}) }
-    return this.#call('list_records', args, () => {
+    return this.#call('GET', '/records', args, () => {
       const rows = this.rows
         .filter((m) => (!kind || m.kind === kind) && (projectId == null || m.projectId === projectId))
         .sort((a, b) => b.updatedAt - a.updatedAt)
-      // list_records carries no body; detail() fills it.
+      // The record list carries no body; detail() fills it.
       return { records: rows.slice(offset, offset + limit).map((m) => ({ ...m, body: null })), total: rows.length }
     })
   }
 
   projects() {
-    return this.#call('list_projects', { limit: 100 }, () => PROJECTS.map((p) => ({ ...p })))
+    return this.#call('GET', '/projects', {}, () => PROJECTS.map((p) => ({ ...p })))
   }
 
   detail(id) {
-    return this.#call('get_record', { id }, () => {
+    return this.#call('GET', `/records/${id}`, {}, () => {
       const memory = this.rows.find((m) => m.id === id)
       if (!memory) throw new Error(`Record #${id} not found`)
       const links = [
@@ -114,7 +117,7 @@ export class DemoRepository {
   }
 
   remember({ project, title, body = '', kind }) {
-    return this.#call('upsert_record', { project_id: project.id, title }, () => {
+    return this.#call('POST', '/records', {}, () => {
       this.added++
       const k = kind || 'info'
       const memory = {
@@ -129,11 +132,11 @@ export class DemoRepository {
       }
       this.rows.push(memory)
       return { ...memory }
-    })
+    }, 201)
   }
 
   setStatus(id, status) {
-    return this.#call('upsert_record', { id, status }, () => {
+    return this.#call('PATCH', `/records/${id}`, {}, () => {
       const m = this.rows.find((r) => r.id === id)
       if (!m) throw new Error(`Record #${id} not found`)
       Object.assign(m, { status, updatedAt: this.now() })

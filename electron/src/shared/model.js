@@ -1,5 +1,5 @@
 // Pure helpers shared by the main process and the renderer: record kinds,
-// relative ages, project names, the palette's fuzzy match and log formatting.
+// relative ages, project names and the palette's fuzzy match.
 // No Node or DOM APIs here, so both sides (and the tests) can import it.
 
 /** Record kinds in the dashboard's order, with its colours. */
@@ -21,7 +21,10 @@ export function kindFromName(name) {
   return KINDS.includes(name) ? name : 'work'
 }
 
-/** One record as list_records / get_record / upsert_record return it. */
+/**
+ * One record as the REST API returns it: GET /records (no body), GET
+ * /records/:id, and POST / PATCH /records (no project_name; callers fill it).
+ */
 export function toMemory(j) {
   const updated = Date.parse(j.updated_at || j.created_at || '')
   return {
@@ -94,15 +97,4 @@ export function rank(query, items) {
   })
   scored.sort((a, b) => (a.score !== b.score ? b.score - a.score : a.i - b.i))
   return scored.map(({ item, hits }) => ({ item, hits }))
-}
-
-/** `{limit:1, status:open, kind:todo}` for the request log; '' for no args. */
-export function formatArgs(args) {
-  const entries = Object.entries(args || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
-  if (!entries.length) return ''
-  const show = (v) => {
-    const s = typeof v === 'string' ? v : JSON.stringify(v)
-    return s.length > 40 ? s.slice(0, 39) + '…' : s
-  }
-  return '{' + entries.map(([k, v]) => `${k}:${show(v)}`).join(', ') + '}'
 }
