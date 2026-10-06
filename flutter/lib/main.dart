@@ -1,121 +1,149 @@
 import 'package:flutter/material.dart';
 
+import 'concepts/console.dart';
+import 'concepts/constellation.dart';
+import 'concepts/hearth.dart';
+import 'concepts/stream.dart';
+import 'shared/theme.dart';
+import 'shared/widgets.dart';
+
 void main() {
-  runApp(const MyApp());
+  runApp(const ReqallApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class Concept {
+  const Concept(this.route, this.name, this.tagline, this.icon, this.colors, this.builder);
+  final String route;
+  final String name;
+  final String tagline;
+  final IconData icon;
+  final List<Color> colors;
+  final WidgetBuilder builder;
+}
 
-  // This widget is the root of your application.
+final concepts = <Concept>[
+  Concept('/hearth', 'Hearth', 'The omarchy panel, warmed up: glowing hero, live counters, Remember sheet.',
+      Icons.local_fire_department_outlined, const [Color(0xFF4A2A2A), Color(0xFF2B1D1D)], (_) => const HearthConcept()),
+  Concept('/constellation', 'Constellation', 'Your memory as a star map: projects are suns, records orbit, links glow.',
+      Icons.auto_awesome_outlined, const [Color(0xFF1A1426), Color(0xFF2B1D1D)], (_) => const ConstellationConcept()),
+  Concept('/stream', 'Stream', 'A river of memories through time, with a capture bar that floats above it.',
+      Icons.waves_outlined, const [Color(0xFF2B1D1D), Color(0xFF3A2620)], (_) => const StreamConcept()),
+  Concept('/console', 'Console', 'Keyboard-first and TUI-flavoured: j/k, a command palette, omarchy at heart.',
+      Icons.terminal_outlined, const [Color(0xFF141010), Color(0xFF231818)], (_) => const ConsoleConcept()),
+];
+
+class ReqallApp extends StatelessWidget {
+  const ReqallApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'Reqall',
+      debugShowCheckedModeBanner: false,
+      theme: Rq.theme(),
+      initialRoute: '/',
+      routes: {
+        '/': (_) => const ConceptPicker(),
+        for (final c in concepts) c.route: c.builder,
+      },
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
+class ConceptPicker extends StatelessWidget {
+  const ConceptPicker({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(center: Alignment(-0.6, -1), radius: 1.4, colors: [Color(0xFF3D2828), Rq.bg]),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 960),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 32, 20, 32),
+                children: [
+                  Row(children: [
+                    const ReqallMark(size: 44, glow: true),
+                    const SizedBox(width: 14),
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Wordmark(size: 24),
+                      Text('UI concept workshop', style: Rq.mono(size: 12, color: Rq.accent)),
+                    ]),
+                  ]),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Four directions for the Flutter app, all on the same mock account. Open one and poke at it.',
+                    style: Rq.body(color: Rq.textSoft),
+                  ),
+                  const SizedBox(height: 24),
+                  LayoutBuilder(builder: (context, box) {
+                    final columns = box.maxWidth > 640 ? 2 : 1;
+                    final width = (box.maxWidth - (columns - 1) * 16) / columns;
+                    return Wrap(spacing: 16, runSpacing: 16, children: [
+                      for (var i = 0; i < concepts.length; i++)
+                        SizedBox(width: width, child: _ConceptCard(index: i + 1, concept: concepts[i])),
+                    ]);
+                  }),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+    );
+  }
+}
+
+class _ConceptCard extends StatefulWidget {
+  const _ConceptCard({required this.index, required this.concept});
+  final int index;
+  final Concept concept;
+
+  @override
+  State<_ConceptCard> createState() => _ConceptCardState();
+}
+
+class _ConceptCardState extends State<_ConceptCard> {
+  bool hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.concept;
+    return MouseRegion(
+      onEnter: (_) => setState(() => hover = true),
+      onExit: (_) => setState(() => hover = false),
+      child: GestureDetector(
+        onTap: () => Navigator.of(context).pushNamed(c.route),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          height: 180,
+          padding: const EdgeInsets.all(20),
+          transform: Matrix4.translationValues(0, hover ? -3 : 0, 0),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: c.colors),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: hover ? Rq.accent : Rq.border),
+            boxShadow: [
+              if (hover) BoxShadow(color: Rq.accent.withValues(alpha: 0.2), blurRadius: 28),
+            ],
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(c.icon, color: Rq.accent, size: 28),
+              const Spacer(),
+              Text('0${widget.index}', style: Rq.mono(size: 13, color: Rq.muted)),
+            ]),
+            const Spacer(),
+            Text(c.name, style: Rq.display(size: 26)),
+            const SizedBox(height: 6),
+            Text(c.tagline, style: Rq.body(size: 13, color: Rq.textSoft), maxLines: 2, overflow: TextOverflow.ellipsis),
+          ]),
+        ),
       ),
     );
   }
