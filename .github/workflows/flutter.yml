@@ -1,6 +1,7 @@
-# Builds the Flutter app for Android, macOS, Linux and Windows, only when
-# something under flutter/ (or this workflow) changes. Pushing a tag like
-# app-v1.2.0 builds everything and attaches the files to a GitHub Release.
+# Analyzes and tests the Flutter app when something under flutter/ (or this
+# workflow) changes. Builds for Android, macOS, Linux and Windows run only on
+# a tag like app-v1.2.0, which attaches the files to a GitHub Release, or on a
+# manual run, which keeps them as artifacts for a day.
 name: Flutter app
 
 on:
@@ -70,6 +71,7 @@ jobs:
   android:
     name: Android APK
     needs: check
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -89,11 +91,12 @@ jobs:
         with:
           name: android
           path: flutter/Reqall-*-android.apk
-          retention-days: 14
+          retention-days: 1
 
   macos:
     name: macOS DMG
     needs: check
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -116,11 +119,12 @@ jobs:
         with:
           name: macos
           path: flutter/Reqall-*-macos.dmg
-          retention-days: 14
+          retention-days: 1
 
   linux:
     name: Linux bundle
     needs: check
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -140,11 +144,12 @@ jobs:
         with:
           name: linux
           path: flutter/Reqall-*-linux-x64.tar.gz
-          retention-days: 14
+          retention-days: 1
 
   windows:
     name: Windows zip
     needs: check
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -161,7 +166,7 @@ jobs:
         with:
           name: windows
           path: flutter/Reqall-*-windows-x64.zip
-          retention-days: 14
+          retention-days: 1
 
   release:
     name: GitHub Release
