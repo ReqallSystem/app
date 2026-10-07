@@ -86,7 +86,9 @@ jobs:
       - run: npx electron-builder ${{ matrix.flag }} --publish never -c.extraMetadata.version=${{ needs.check.outputs.version }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - uses: actions/upload-artifact@v4
+      # Not on PRs: nothing there consumes it. Tag runs feed the release job below.
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
         with:
           name: console-${{ matrix.name }}
           path: |
@@ -95,7 +97,7 @@ jobs:
             electron/dist/*.dmg
             electron/dist/*.exe
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
   release:
     name: GitHub Release

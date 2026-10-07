@@ -85,11 +85,13 @@ jobs:
       # Signed with the template's debug key until a release keystore is set up.
       - run: flutter build apk --release ${{ needs.check.outputs.flags }}
       - run: mv build/app/outputs/flutter-apk/app-release.apk "Reqall-${{ needs.check.outputs.version }}-android.apk"
-      - uses: actions/upload-artifact@v4
+      # Not on PRs: nothing there consumes it. Tag runs feed the release job below.
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
         with:
           name: android
           path: flutter/Reqall-*-android.apk
-          retention-days: 14
+          retention-days: 1
 
   macos:
     name: macOS DMG
@@ -112,11 +114,13 @@ jobs:
           ln -s /Applications "$staging/Applications"
           hdiutil create -volname Reqall -srcfolder "$staging" -ov -format UDZO \
             "Reqall-${{ needs.check.outputs.version }}-macos.dmg"
-      - uses: actions/upload-artifact@v4
+      # Not on PRs: nothing there consumes it. Tag runs feed the release job below.
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
         with:
           name: macos
           path: flutter/Reqall-*-macos.dmg
-          retention-days: 14
+          retention-days: 1
 
   linux:
     name: Linux bundle
@@ -136,11 +140,13 @@ jobs:
           cache: true
       - run: flutter build linux --release ${{ needs.check.outputs.flags }}
       - run: tar -C build/linux/x64/release/bundle -czf "Reqall-${{ needs.check.outputs.version }}-linux-x64.tar.gz" .
-      - uses: actions/upload-artifact@v4
+      # Not on PRs: nothing there consumes it. Tag runs feed the release job below.
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
         with:
           name: linux
           path: flutter/Reqall-*-linux-x64.tar.gz
-          retention-days: 14
+          retention-days: 1
 
   windows:
     name: Windows zip
@@ -157,11 +163,13 @@ jobs:
       - name: Zip
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "Reqall-${{ needs.check.outputs.version }}-windows-x64.zip"
-      - uses: actions/upload-artifact@v4
+      # Not on PRs: nothing there consumes it. Tag runs feed the release job below.
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
         with:
           name: windows
           path: flutter/Reqall-*-windows-x64.zip
-          retention-days: 14
+          retention-days: 1
 
   release:
     name: GitHub Release
