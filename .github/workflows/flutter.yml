@@ -1,6 +1,7 @@
-# Builds the Flutter app for Android, macOS, Linux and Windows, only when
-# something under flutter/ (or this workflow) changes. Pushing a tag like
-# app-v1.2.0 builds everything and attaches the files to a GitHub Release.
+# Analyzes and tests the Flutter app when something under flutter/ (or this
+# workflow) changes. Builds for Android, macOS, Linux and Windows run only on
+# a tag like app-v1.2.0, which attaches the files to a GitHub Release, or on a
+# manual run, which keeps them as artifacts for a day.
 name: Flutter app
 
 on:
@@ -70,6 +71,7 @@ jobs:
   android:
     name: Android APK
     needs: check
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,9 +87,7 @@ jobs:
       # Signed with the template's debug key until a release keystore is set up.
       - run: flutter build apk --release ${{ needs.check.outputs.flags }}
       - run: mv build/app/outputs/flutter-apk/app-release.apk "Reqall-${{ needs.check.outputs.version }}-android.apk"
-      # Not on PRs: nothing there consumes it. Tag runs feed the release job below.
-      - if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: android
           path: flutter/Reqall-*-android.apk
@@ -96,6 +96,7 @@ jobs:
   macos:
     name: macOS DMG
     needs: check
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -114,9 +115,7 @@ jobs:
           ln -s /Applications "$staging/Applications"
           hdiutil create -volname Reqall -srcfolder "$staging" -ov -format UDZO \
             "Reqall-${{ needs.check.outputs.version }}-macos.dmg"
-      # Not on PRs: nothing there consumes it. Tag runs feed the release job below.
-      - if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: macos
           path: flutter/Reqall-*-macos.dmg
@@ -125,6 +124,7 @@ jobs:
   linux:
     name: Linux bundle
     needs: check
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -140,9 +140,7 @@ jobs:
           cache: true
       - run: flutter build linux --release ${{ needs.check.outputs.flags }}
       - run: tar -C build/linux/x64/release/bundle -czf "Reqall-${{ needs.check.outputs.version }}-linux-x64.tar.gz" .
-      # Not on PRs: nothing there consumes it. Tag runs feed the release job below.
-      - if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: linux
           path: flutter/Reqall-*-linux-x64.tar.gz
@@ -151,6 +149,7 @@ jobs:
   windows:
     name: Windows zip
     needs: check
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -163,9 +162,7 @@ jobs:
       - name: Zip
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "Reqall-${{ needs.check.outputs.version }}-windows-x64.zip"
-      # Not on PRs: nothing there consumes it. Tag runs feed the release job below.
-      - if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: windows
           path: flutter/Reqall-*-windows-x64.zip
