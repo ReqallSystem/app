@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fuzzy, rank, relativeAge, shortProject, toMemory, formatArgs, kindFromName } from '../src/shared/model.js'
+import { fuzzy, rank, relativeAge, shortProject, toMemory, toProject, kindFromName } from '../src/shared/model.js'
 
 test('fuzzy matches subsequences and reports hit positions', () => {
   assert.deepEqual(fuzzy('ki', 'kind:issue').hits, [0, 1])
@@ -27,16 +27,15 @@ test('relativeAge buckets', () => {
   assert.equal(relativeAge(-5), 'now')
 })
 
-test('records normalise from tool output', () => {
+test('records and projects normalise from REST output', () => {
   const m = toMemory({ id: '7', title: 't', kind: 'bogus', project_name: 'a/b', project_id: 3, updated_at: '2026-10-05T12:00:00Z' })
   assert.deepEqual(m, { id: 7, title: 't', body: null, kind: 'work', status: 'open', project: 'a/b', projectId: 3, updatedAt: Date.UTC(2026, 9, 5, 12) })
+  const written = toMemory({ id: 8, project_id: 3, kind: 'todo', title: 'w', body: 'b', status: 'open', created_at: '2026-10-05T11:00:00Z', updated_at: '2026-10-05T12:00:00Z', secret_scan_flagged: false })
+  assert.equal(written.project, '', 'POST / PATCH answers carry no project_name')
+  assert.equal(written.body, 'b')
+  assert.equal(toMemory({ id: 9, created_at: '2026-10-05T11:00:00Z' }).updatedAt, Date.UTC(2026, 9, 5, 11))
+  assert.deepEqual(toProject({ id: 4, name: 'lumen-labs/atlas-core', visibility: 'private', record_count: 12, link_count: 3, access: 'owner' }), { id: 4, name: 'lumen-labs/atlas-core', count: 12 })
   assert.equal(kindFromName('issue'), 'issue')
   assert.equal(shortProject('lumen-labs/atlas-desktop'), 'atlas-desktop')
   assert.equal(shortProject('.user'), '.user')
-})
-
-test('formatArgs prints compact, skips empties and truncates long values', () => {
-  assert.equal(formatArgs({ limit: 1, status: 'open', kind: undefined }), '{limit:1, status:open}')
-  assert.equal(formatArgs({}), '')
-  assert.match(formatArgs({ title: 'x'.repeat(80) }), /^\{title:x{39}…\}$/)
 })

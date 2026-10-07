@@ -9,12 +9,11 @@ import 'package:reqall_app/screens/login_screen.dart';
 import 'package:reqall_app/screens/stream_screen.dart';
 import 'package:reqall_app/state/session.dart';
 
-import 'support/fake_mcp.dart';
+import 'support/fake_api.dart';
 
-Session testSession(FakeMcp fake, {Credentials? stored}) => Session(
+Session testSession(FakeApi fake, {Credentials? stored}) => Session(
       store: MemoryCredentialStore(stored),
       httpClient: fake.client,
-      findCli: () async => null,
       completeRedirect: (_) async => null,
       runOAuth: (_, _) async => null,
       demo: () => DemoRepository(latency: Duration.zero),
@@ -38,10 +37,11 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(ReqallApp(session: testSession(FakeMcp())));
+      await tester.pumpWidget(ReqallApp(session: testSession(FakeApi())));
       await pumpFor(tester, 5);
       expect(find.byType(LoginScreen), findsOneWidget);
       expect(find.text('Sign in with Reqall'), findsOneWidget);
+      expect(find.textContaining('CLI'), findsNothing);
 
       await tester.ensureVisible(find.text('Try the demo'));
       await tester.tap(find.text('Try the demo'));
@@ -56,7 +56,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
-      final session = testSession(FakeMcp(),
+      final session = testSession(FakeApi(),
           stored: const Credentials(server: kDefaultServer, source: CredentialSource.apiKey, apiKey: 'good-key'));
       await tester.pumpWidget(ReqallApp(session: session));
       await pumpFor(tester);
@@ -68,7 +68,7 @@ void main() {
   }
 
   testWidgets('API key form signs in', (tester) async {
-    final session = testSession(FakeMcp());
+    final session = testSession(FakeApi());
     await tester.pumpWidget(ReqallApp(session: session));
     await pumpFor(tester, 5);
     await tester.enterText(find.byType(TextField).first, 'good-key');
@@ -80,7 +80,7 @@ void main() {
   });
 
   testWidgets('a rejected key shows why', (tester) async {
-    await tester.pumpWidget(ReqallApp(session: testSession(FakeMcp())));
+    await tester.pumpWidget(ReqallApp(session: testSession(FakeApi())));
     await pumpFor(tester, 5);
     await tester.enterText(find.byType(TextField).first, 'wrong');
     await tester.pump();

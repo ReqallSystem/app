@@ -4,46 +4,28 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import {
-  parseEnvFile, resolveCliCredentials, findCliCredentials, cliPaths, jwtExpiry, tokenExpired, normalizeServer,
-  credentialsFromJson, FileCredentialStore
-} from '../src/main/credentials.js'
+import * as credentials from '../src/main/credentials.js'
 import { challengeFor, authorizeUrl, generatePkce, OAuthApi, runOAuth, APP_CLIENT_ID } from '../src/main/oauth.js'
-import { startFakeMcp } from './fake-mcp.js'
+import { startFakeApi } from './fake-api.js'
 
-const fake = await startFakeMcp()
+const { jwtExpiry, tokenExpired, normalizeServer, credentialsFromJson, sourceLabel, FileCredentialStore } = credentials
+const fake = await startFakeApi()
 after(() => fake.close())
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'reqall-console-'))
 after(() => fs.rmSync(tmp, { recursive: true, force: true }))
 
 const jwt = (exp) => ['e30', Buffer.from(JSON.stringify({ exp })).toString('base64url'), 'sig'].join('.')
 
-test('env file is parsed, not sourced: export, quotes, url aliases', () => {
-  assert.deepEqual(parseEnvFile('export REQALL_API_KEY="abc"\nREQALL_URL=\'https://x.test\'\n# REQALL_API_KEY=no'), { key: 'abc', url: 'https://x.test' })
-  assert.deepEqual(parseEnvFile('REQALL_API_KEY=$(rm -rf ~)'), { key: '$(rm -rf ~)', url: '' })
-})
-
-test('CLI credential order: environment > env file > config.json', () => {
-  const both = { envFile: 'REQALL_API_KEY=file', configJson: '{"api_key":"cfg"}', envPath: '~/.config/reqall/env', configPath: 'cfg.json' }
-  assert.equal(resolveCliCredentials({ environment: { REQALL_API_KEY: 'envkey' }, ...both }).apiKey, 'envkey')
-  const fromFile = resolveCliCredentials({ environment: {}, ...both })
-  assert.deepEqual(fromFile, { server: 'https://www.reqall.net', source: 'cli', origin: '~/.config/reqall/env', apiKey: 'file' })
-  assert.equal(resolveCliCredentials({ environment: {}, configJson: '{"api_key":"cfg"}', configPath: 'cfg.json' }).apiKey, 'cfg')
-  const token = resolveCliCredentials({ environment: { REQALL_API_URL: 'local.test/' }, configJson: JSON.stringify({ access_token: jwt(Date.now() / 1000 + 3600), refresh_token: 'r' }) })
-  assert.equal(token.server, 'https://local.test')
-  assert.ok(token.accessToken && !token.refreshToken, 'the CLI refresh token is never taken')
-  assert.equal(resolveCliCredentials({ environment: {}, configJson: JSON.stringify({ access_token: jwt(1) }) }), null, 'expired tokens are skipped')
-  assert.equal(resolveCliCredentials({ environment: {}, configJson: '{not json' }), null)
-})
-
-test('findCliCredentials reads REQALL_CONFIG_DIR', () => {
-  const dir = path.join(tmp, 'cfg')
-  fs.mkdirSync(dir)
-  fs.writeFileSync(path.join(dir, 'env'), 'REQALL_API_KEY=k1\n')
-  const c = findCliCredentials({ env: { REQALL_CONFIG_DIR: dir }, home: tmp })
-  assert.equal(c.apiKey, 'k1')
-  assert.equal(c.origin, '~/cfg/env')
-  assert.match(cliPaths({ env: {}, platform: 'darwin', home: '/Users/me' }).configFile, /Library\/Application Support\/reqall\/config.json$/)
+test('credentials come only from OAuth or an API key; stored CLI credentials read as signed out', () => {
+  assert.deepEqual(credentials.SOURCES, ['apiKey', 'oauth'])
+  for (const gone of ['resolveCliCredentials', 'findCliCredentials', 'cliPaths', 'parseEnvFile']) {
+    assert.equal(credentials[gone], undefined, `${gone} is gone`)
+  }
+  assert.equal(credentialsFromJson({ server: 'https://www.reqall.net', source: 'cli', apiKey: 'rq_old', origin: '~/.config/reqall/env' }), null)
+  assert.equal(credentialsFromJson({ server: 'https://www.reqall.net', source: 'cli', accessToken: 'at' }), null)
+  assert.deepEqual(credentialsFromJson({ server: 'x.test/', source: 'apiKey', apiKey: 'rq_k', origin: 'stale' }), { server: 'https://x.test', source: 'apiKey', apiKey: 'rq_k' })
+  assert.equal(sourceLabel({ source: 'oauth' }), 'signed in')
+  assert.equal(sourceLabel({ source: 'apiKey' }), 'API key')
 })
 
 test('jwt expiry and normalisation helpers', () => {
@@ -72,6 +54,8 @@ test('file store encrypts at rest and keeps nothing without a keychain', () => {
   if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600)
   store.clear()
   assert.equal(store.read(), null)
+  fs.writeFileSync(file, box.encrypt(JSON.stringify({ server: 'https://www.reqall.net', source: 'cli', apiKey: 'from-the-cli' })))
+  assert.equal(store.read(), null, 'a saved CLI sign-in loads as signed out')
 
   const none = new FileCredentialStore(path.join(tmp, 'none.bin'), { available: () => false })
   assert.equal(none.persists, false)
@@ -84,7 +68,11 @@ test('PKCE challenge matches RFC 7636 appendix B', () => {
   const u = new URL(authorizeUrl({ server: 'www.reqall.net', redirectUri: 'http://127.0.0.1:5/callback', pkce: generatePkce(), state: 's' }))
   assert.equal(u.origin + u.pathname, 'https://www.reqall.net/oauth/authorize')
   assert.equal(u.searchParams.get('client_id'), APP_CLIENT_ID)
-  assert.equal(u.searchParams.get('resource'), 'https://www.reqall.net/mcp')
+  assert.equal(u.searchParams.get('resource'), 'https://www.reqall.net/api')
+  assert.equal(u.searchParams.get('scope'), 'api')
+  assert.equal(u.searchParams.get('response_type'), 'code')
+  assert.equal(u.searchParams.get('redirect_uri'), 'http://127.0.0.1:5/callback')
+  assert.equal(u.searchParams.get('state'), 's')
   assert.equal(u.searchParams.get('code_challenge_method'), 'S256')
 })
 
@@ -103,6 +91,8 @@ test('runOAuth: browser round trip through the loopback listener, then token exc
   const req = fake.tokenRequests.at(-1)
   assert.equal(req.grant_type, 'authorization_code')
   assert.equal(req.code, 'the-code')
+  assert.equal(req.client_id, APP_CLIENT_ID)
+  assert.equal(req.resource, fake.url + '/api')
   assert.equal(challengeFor(req.code_verifier).length, 43)
   assert.match(req.redirect_uri, /^http:\/\/127\.0\.0\.1:\d+\/callback$/)
 })
@@ -120,11 +110,15 @@ test('runOAuth: a wrong state is rejected, and abort cancels', async () => {
   await assert.rejects(p, /cancelled/)
 })
 
-test('refresh keeps the old refresh token when none is returned, and reports failures', async () => {
-  fake.tokenResponse = { access_token: 'at-2' }
-  const c = await new OAuthApi().refresh({ server: fake.url, source: 'oauth', accessToken: 'x', refreshToken: 'rt-1', clientId: 'cid' })
-  assert.equal(c.accessToken, 'at-2')
-  assert.equal(c.refreshToken, 'rt-1')
+test('refresh rotates the refresh token, keeps the old one when none is returned, and reports failures', async () => {
+  fake.tokenResponse = { access_token: 'at-2', refresh_token: 'rt-2', token_type: 'Bearer', expires_in: 28800, scope: 'api' }
+  const rotated = await new OAuthApi().refresh({ server: fake.url, source: 'oauth', accessToken: 'x', refreshToken: 'rt-1', clientId: 'cid' })
+  assert.equal(rotated.refreshToken, 'rt-2')
+  assert.deepEqual(fake.tokenRequests.at(-1), { grant_type: 'refresh_token', refresh_token: 'rt-1', client_id: 'cid', resource: fake.url + '/api' })
+  fake.tokenResponse = { access_token: 'at-3' }
+  const c = await new OAuthApi().refresh(rotated)
+  assert.equal(c.accessToken, 'at-3')
+  assert.equal(c.refreshToken, 'rt-2')
   fake.tokenResponse = null
   await assert.rejects(new OAuthApi().refresh(c), /Sign-in failed: invalid_grant/)
 })

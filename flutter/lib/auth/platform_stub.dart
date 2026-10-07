@@ -7,6 +7,4 @@ Future<Credentials?> runOAuth(OAuthApi api, String server) async => null;
 
 Future<Credentials?> completeOAuthRedirect(OAuthApi api) async => null;
 
-Future<Credentials?> findCliCredentials() async => null;
-
 bool credentialsPersist() => true;

@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../api/api_client.dart';
 import '../api/demo_repository.dart';
-import '../api/mcp_client.dart';
 import '../api/models.dart';
 import '../api/repository.dart';
 import '../auth/credentials.dart';
@@ -24,13 +24,11 @@ class Session extends ChangeNotifier {
     CredentialStore? store,
     http.Client? httpClient,
     OAuthApi? oauth,
-    Future<Credentials?> Function()? findCli,
     Future<Credentials?> Function(OAuthApi)? completeRedirect,
     Future<Credentials?> Function(OAuthApi, String)? runOAuth,
     ReqallRepository Function()? demo,
   })  : _store = store ?? SecureCredentialStore(),
         _http = httpClient ?? http.Client(),
-        _findCli = findCli ?? platform.findCliCredentials,
         _completeRedirect = completeRedirect ?? platform.completeOAuthRedirect,
         _runOAuth = runOAuth ?? platform.runOAuth,
         _demo = demo ?? DemoRepository.new {
@@ -40,7 +38,6 @@ class Session extends ChangeNotifier {
   final CredentialStore _store;
   final http.Client _http;
   late final OAuthApi _oauth;
-  final Future<Credentials?> Function() _findCli;
   final Future<Credentials?> Function(OAuthApi) _completeRedirect;
   final Future<Credentials?> Function(OAuthApi, String) _runOAuth;
   final ReqallRepository Function() _demo;
@@ -55,9 +52,6 @@ class Session extends ChangeNotifier {
   bool demo = false;
   ReqallRepository? _repo;
 
-  /// Credentials another Reqall client left on this machine, offered on the
-  /// login screen as "Continue with CLI login".
-  Credentials? cliCandidate;
   bool signingIn = false;
   String? signInError;
 
@@ -109,7 +103,6 @@ class Session extends ChangeNotifier {
       await _adopt(stored, persist: false);
       return;
     }
-    cliCandidate = await _findCli();
     phase = Phase.signedOut;
     notifyListeners();
   }
@@ -123,8 +116,6 @@ class Session extends ChangeNotifier {
   Future<void> signInWithOAuth({String server = kDefaultServer}) =>
       _signIn(() => _runOAuth(_oauth, normalizeServer(server)));
 
-  Future<void> continueWithCli() => _signIn(() async => cliCandidate);
-
   Future<void> startDemo() async {
     _reset();
     demo = true;
@@ -137,7 +128,6 @@ class Session extends ChangeNotifier {
   Future<void> signOut() async {
     await _store.clear();
     _reset();
-    cliCandidate ??= await _findCli();
     phase = Phase.signedOut;
     notifyListeners();
   }
@@ -151,11 +141,11 @@ class Session extends ChangeNotifier {
       final c = await obtain();
       if (c == null) return; // web OAuth navigates away and finishes on return
       await _adopt(c, validate: true);
-    } on McpException catch (e) {
+    } on ApiException catch (e) {
       signInError = switch (e.failure) {
-        McpFailure.unauthorized => 'That key was rejected (401). Check it and try again.',
-        McpFailure.forbidden => 'Access is paused for this account (403).',
-        McpFailure.network => 'Could not reach the server. Check the address and your connection.',
+        ApiFailure.unauthorized => 'That key was rejected (401). Check it and try again.',
+        ApiFailure.forbidden => 'Access is paused for this account (403).',
+        ApiFailure.network => 'Could not reach the server. Check the address and your connection.',
         _ => e.message,
       };
     } catch (e) {
@@ -169,8 +159,8 @@ class Session extends ChangeNotifier {
   /// Makes [c] the active credentials. With [validate], one summary call
   /// must succeed first, so a bad key never reaches the stream.
   Future<void> _adopt(Credentials c, {bool persist = true, bool validate = false}) async {
-    final repo = LiveRepository(McpClient(
-      endpoint: apiBase(c.server).resolve('/mcp'),
+    final repo = LiveRepository(ApiClient(
+      base: apiBase(c.server).resolve('/api/v1'),
       token: () => credentials?.bearer ?? c.bearer,
       httpClient: _http,
     ));
@@ -220,12 +210,15 @@ class Session extends ChangeNotifier {
     if (repo == null) return null;
     try {
       if (credentials?.tokenExpired == true && credentials!.canRefresh) await _refreshToken();
+      final sentWith = credentials?.bearer;
       T value;
       try {
         value = await op(repo);
-      } on McpException catch (e) {
-        if (e.failure != McpFailure.unauthorized || !(credentials?.canRefresh ?? false)) rethrow;
-        await _refreshToken();
+      } on ApiException catch (e) {
+        if (e.failure != ApiFailure.unauthorized || !(credentials?.canRefresh ?? false)) rethrow;
+        // A parallel request may already have refreshed while this one was
+        // in flight; then the new token just needs a retry.
+        if (credentials?.bearer == sentWith) await _refreshToken();
         value = await op(repo);
       }
       // Signed out or switched accounts while this was in flight.
@@ -235,12 +228,12 @@ class Session extends ChangeNotifier {
         problemMessage = null;
       }
       return value;
-    } on McpException catch (e) {
+    } on ApiException catch (e) {
       if (!identical(repo, _repo)) return null; // signed out meanwhile
       switch (e.failure) {
-        case McpFailure.unauthorized:
+        case ApiFailure.unauthorized:
           await _expire(e.message);
-        case McpFailure.forbidden:
+        case ApiFailure.forbidden:
           problem = Problem.paused;
           problemMessage = e.message;
         default:
@@ -255,8 +248,17 @@ class Session extends ChangeNotifier {
     }
   }
 
-  Future<void> _refreshToken() async {
-    final c = await _oauth.refresh(credentials!);
+  Future<void>? _refreshing;
+
+  /// Refresh tokens rotate on every use and the loser of two concurrent
+  /// refreshes gets invalid_grant, so callers share one refresh in flight.
+  Future<void> _refreshToken() => _refreshing ??= _rotate().whenComplete(() => _refreshing = null);
+
+  Future<void> _rotate() async {
+    final before = credentials;
+    if (before == null) return;
+    final c = await _oauth.refresh(before);
+    if (!identical(credentials, before)) return; // signed out or switched meanwhile
     credentials = c;
     await _store.write(c);
   }

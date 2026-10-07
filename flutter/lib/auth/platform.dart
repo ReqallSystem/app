@@ -1,11 +1,10 @@
 /// Platform-specific sign-in pieces: the OAuth browser round trip and
-/// discovery of credentials other Reqall clients left on this machine.
+/// whether credentials can be kept.
 ///
 ///   oauthUnavailableReason()  null when "Sign in with Reqall" can run here
 ///   runOAuth(api, server)     desktop: loopback redirect, returns credentials;
 ///                             web: navigates away, completes on return
 ///   completeOAuthRedirect()   web: finishes a sign-in the page came back from
-///   findCliCredentials()      desktop: REQALL_API_KEY / env file / config.json
 ///   credentialsPersist()      false on web pages that are not a secure context
 library;
 

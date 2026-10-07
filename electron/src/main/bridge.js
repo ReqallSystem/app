@@ -72,7 +72,6 @@ export function connect({ ipcMain, session, send, openExternal }) {
   })
   handle('reqall:sign-in-key', (_e, key, server) => session.signInWithApiKey(str(key, 4096), normalizeServer(str(server, 2048))))
   handle('reqall:sign-in-oauth', (_e, server) => session.signInWithOAuth(normalizeServer(str(server, 2048))))
-  handle('reqall:sign-in-cli', () => session.continueWithCli())
   handle('reqall:cancel-sign-in', () => { session.cancelSignIn(); return true })
   handle('reqall:demo', () => session.startDemo())
   handle('reqall:sign-out', () => session.signOut())

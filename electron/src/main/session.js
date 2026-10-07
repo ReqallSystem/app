@@ -5,25 +5,25 @@
 // in `problem` / `signInError` and in the log.
 
 import { EventEmitter } from 'node:events'
-import { McpClient, McpError, Failure } from './mcp.js'
+import { ApiClient, ApiError, Failure, statusText } from './api.js'
 import { LiveRepository } from './repository.js'
 import { DemoRepository } from './demo.js'
 import { OAuthApi, OAuthError } from './oauth.js'
 import {
-  DEFAULT_SERVER, normalizeServer, hostOf, bearer, canRefresh, tokenExpired, sourceLabel, MemoryCredentialStore
+  DEFAULT_SERVER, normalizeServer, hostOf, bearer, canRefresh, tokenExpired, sourceLabel, credentialsFromJson,
+  MemoryCredentialStore
 } from './credentials.js'
-import { formatArgs } from '../shared/model.js'
 
 export const PAGE_SIZE = 50
 const PREFETCH = 3
-const QUIET = new Set(['get_record', 'list_links'])
+// GET /api/v1/records/:id and …/:id/links: the detail fetches.
+const QUIET = /^\/api\/v1\/records\/[^/?]+(\/links)?(\?|$)/
 
 export class Session extends EventEmitter {
   constructor({
     store = new MemoryCredentialStore(),
     fetchImpl = fetch,
     oauth,
-    findCli = () => null,
     runOAuth = async () => { throw new OAuthError('Browser sign-in is not available') },
     demo = (opts) => new DemoRepository(opts)
   } = {}) {
@@ -31,7 +31,6 @@ export class Session extends EventEmitter {
     this.store = store
     this.fetchImpl = fetchImpl
     this.oauth = oauth || new OAuthApi({ fetchImpl })
-    this.findCli = findCli
     this.runOAuth = runOAuth
     this.makeDemo = demo
 
@@ -39,7 +38,6 @@ export class Session extends EventEmitter {
     this.credentials = null
     this.demo = false
     this.repo = null
-    this.cliCandidate = null
     this.signingIn = false
     this.signInError = null
     this.abort = null
@@ -80,10 +78,11 @@ export class Session extends EventEmitter {
    * One request, as the console prints it. Detail fetches run on every cursor
    * move and after each refresh, so they are only logged when they fail.
    */
-  #logCall = ({ name, args, status, ms, error }) => {
-    if (status === 200 && QUIET.has(name)) return
-    const call = `tools/call ${name}${args && Object.keys(args).length ? ' ' + formatArgs(args) : ''}`
-    if (status === 200) this.log(`→ ${call} … 200 OK ${ms}ms`)
+  #logCall = ({ method, path, status, ms, error }) => {
+    const ok = status >= 200 && status < 300
+    if (ok && method === 'GET' && QUIET.test(path)) return
+    const call = `${method} ${path}`
+    if (ok) this.log(`→ ${call} … ${status} ${statusText(status) || 'OK'} ${ms}ms`)
     else this.log(`✗ ${call} … ${status || 'ERR'} ${error || ''}`.trimEnd())
   }
 
@@ -106,10 +105,9 @@ export class Session extends EventEmitter {
       demo: this.demo,
       host: this.host,
       server: this.server,
-      keySource: this.demo ? 'demo account' : c ? (c.source === 'cli' ? sourceLabel(c) : c.source === 'oauth' ? 'oauth' : 'api key') : '',
+      keySource: this.demo ? 'demo account' : c ? (c.source === 'oauth' ? 'oauth' : 'api key') : '',
       signingIn: this.signingIn,
       signInError: this.signInError,
-      cli: this.cliCandidate ? { host: hostOf(this.cliCandidate.server), origin: sourceLabel(this.cliCandidate) } : null,
       credentialsPersist: this.store.persists !== false,
       summary: this.summary,
       records: this.records,
@@ -131,13 +129,13 @@ export class Session extends EventEmitter {
   // ----------------------------------------------------------- lifecycle
 
   async start() {
-    const stored = this.store.read()
+    // Anything unusable, such as the retired 'cli' source, reads as signed out.
+    const stored = credentialsFromJson(this.store.read())
     if (stored) {
       this.log('$ reqall status', `✓ using saved credentials for ${hostOf(stored.server)}`)
       await this.#adopt(stored, { persist: false })
       return
     }
-    this.cliCandidate = this.findCli()
     this.phase = 'signedOut'
     this.changed()
   }
@@ -158,10 +156,6 @@ export class Session extends EventEmitter {
     })
   }
 
-  continueWithCli() {
-    return this.#signIn('cli', async () => this.cliCandidate)
-  }
-
   /** Gives up on a browser sign-in that is waiting for its redirect. */
   cancelSignIn() {
     if (this.abort) this.abort.abort()
@@ -180,7 +174,6 @@ export class Session extends EventEmitter {
   async signOut() {
     this.store.clear()
     this.#reset()
-    if (!this.cliCandidate) this.cliCandidate = this.findCli()
     this.phase = 'signedOut'
     this.log('$ reqall logout', '✓ signed out')
     this.changed()
@@ -197,9 +190,9 @@ export class Session extends EventEmitter {
       this.log(`$ reqall login --${how.replace(' ', '-')}`)
       await this.#adopt(c, { validate: true })
     } catch (e) {
-      if (e instanceof McpError) {
+      if (e instanceof ApiError) {
         this.signInError = e.failure === Failure.unauthorized ? 'That key was rejected (401). Check it and try again.'
-          : e.failure === Failure.forbidden ? 'Access is paused for this account (403).'
+          : e.failure === Failure.forbidden ? (e.code === 'key_paused' ? 'This API key is paused (403).' : 'Access is paused for this account (403).')
             : e.failure === Failure.network ? 'Could not reach the server. Check the address and your connection.'
               : e.message
       } else {
@@ -214,8 +207,8 @@ export class Session extends EventEmitter {
 
   /** Makes `c` the active credentials. With `validate`, one summary call must succeed first. */
   async #adopt(c, { persist = true, validate = false } = {}) {
-    const repo = new LiveRepository(new McpClient({
-      endpoint: c.server + '/mcp',
+    const repo = new LiveRepository(new ApiClient({
+      server: c.server,
       token: () => bearer(this.credentials) || bearer(c),
       fetchImpl: this.fetchImpl,
       onLog: this.#logCall
@@ -258,7 +251,7 @@ export class Session extends EventEmitter {
    * Runs `op` against the repository, refreshing an OAuth token once on
    * expiry or a 401. Every failure lands in `lastError`; only the ones that
    * say the account or server is unwell (403, network, HTTP errors) set
-   * `problem`, so a tool refusing one call does not mark the app offline.
+   * `problem`, so a 400 or 404 on one request does not mark the app offline.
    * Returns undefined when the call failed or the account changed meanwhile.
    */
   async #guard(op) {
@@ -271,7 +264,7 @@ export class Session extends EventEmitter {
       try {
         value = await op(repo)
       } catch (e) {
-        if (!(e instanceof McpError) || e.failure !== Failure.unauthorized || !canRefresh(this.credentials)) throw e
+        if (!(e instanceof ApiError) || e.failure !== Failure.unauthorized || !canRefresh(this.credentials)) throw e
         // Another call may have refreshed while this one was in flight.
         if (bearer(this.credentials) === sent) await this.#refreshToken()
         value = await op(repo)
@@ -284,12 +277,12 @@ export class Session extends EventEmitter {
       return value
     } catch (e) {
       if (repo !== this.repo) return undefined
-      if (e instanceof OAuthError || (e instanceof McpError && e.failure === Failure.unauthorized)) {
+      if (e instanceof OAuthError || (e instanceof ApiError && e.failure === Failure.unauthorized)) {
         this.#expire(e.message)
         return undefined
       }
       this.lastError = e && e.message ? e.message : String(e)
-      if (e instanceof McpError && e.failure !== Failure.tool) {
+      if (e instanceof ApiError && e.failure !== Failure.request) {
         this.problem = e.failure === Failure.forbidden ? 'paused' : 'offline'
         this.problemMessage = this.lastError
       }

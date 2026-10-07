@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:url_launcher/url_launcher.dart';
 
-import 'cli_credentials.dart';
 import 'credentials.dart';
 import 'oauth.dart';
 
@@ -59,36 +58,3 @@ Future<Credentials?> runOAuth(OAuthApi api, String server) async {
 Future<Credentials?> completeOAuthRedirect(OAuthApi api) async => null;
 
 bool credentialsPersist() => true;
-
-Future<Credentials?> findCliCredentials() async {
-  if (!_desktop) return null;
-  final env = Platform.environment;
-  var home = env['HOME'] ?? env['USERPROFILE'] ?? '';
-  // A sandboxed macOS app sees HOME inside its container; the CLI's files
-  // live in the real home, readable through the entitlements' read-only
-  // home-relative exceptions for these two folders.
-  final container = home.indexOf('/Library/Containers/');
-  if (container > 0) home = home.substring(0, container);
-  final dir = env['REQALL_CONFIG_DIR'] ??
-      (Platform.isWindows
-          ? '${env['APPDATA'] ?? '$home\\AppData\\Roaming'}\\reqall'
-          : Platform.isMacOS
-              ? '$home/Library/Application Support/reqall'
-              : '${env['XDG_CONFIG_HOME'] ?? '$home/.config'}/reqall');
-  // The plugin's env file lives under ~/.config/reqall on every platform.
-  final envDir = env['REQALL_CONFIG_DIR'] ?? '$home/.config/reqall';
-
-  Future<String?> read(String path) async {
-    try {
-      return await File(path).readAsString();
-    } catch (_) {
-      return null;
-    }
-  }
-
-  return resolveCliCredentials(
-    environment: env,
-    envFile: await read('$envDir/env'),
-    configJson: await read('$dir/config.json'),
-  );
-}

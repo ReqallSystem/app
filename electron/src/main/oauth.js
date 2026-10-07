@@ -1,7 +1,8 @@
 // OAuth 2.1 authorization code + PKCE against the Reqall server, the same flow
-// the CLI and the Flutter app run. The server accepts unregistered clients
-// whose redirect_uri is a loopback address, so the app needs no registration:
-// a one-shot listener on 127.0.0.1 catches the redirect from the browser.
+// the CLI and the Flutter app run, for the REST API's audience (`{server}/api`,
+// scope `api`). The server accepts unregistered clients whose redirect_uri is
+// a loopback address, so the app needs no registration: a one-shot listener
+// on 127.0.0.1 catches the redirect from the browser.
 
 import crypto from 'node:crypto'
 import http from 'node:http'
@@ -23,8 +24,9 @@ export const randomState = () => b64(crypto.randomBytes(16))
 /** The app's stable public client id, derived like the CLI's and shared with the Flutter app. */
 export const APP_CLIENT_ID = crypto.createHash('sha256').update('reqall-app').digest('hex').slice(0, 32)
 
-/** RFC 8707 resource: tokens are bound to the server's MCP endpoint. */
-export const mcpResource = (server) => normalizeServer(server) + '/mcp'
+/** RFC 8707 resource: tokens are bound to the server's REST API. */
+export const apiResource = (server) => normalizeServer(server) + '/api'
+export const API_SCOPE = 'api'
 
 export function authorizeUrl({ server, redirectUri, pkce, state }) {
   const u = new URL(normalizeServer(server) + '/oauth/authorize')
@@ -34,9 +36,9 @@ export function authorizeUrl({ server, redirectUri, pkce, state }) {
     response_type: 'code',
     code_challenge: pkce.challenge,
     code_challenge_method: 'S256',
-    scope: 'mcp',
+    scope: API_SCOPE,
     state,
-    resource: mcpResource(server)
+    resource: apiResource(server)
   }
   for (const [k, v] of Object.entries(q)) u.searchParams.set(k, v)
   return u.toString()
@@ -56,7 +58,7 @@ export class OAuthApi {
       code_verifier: verifier,
       redirect_uri: redirectUri,
       client_id: APP_CLIENT_ID,
-      resource: mcpResource(server)
+      resource: apiResource(server)
     })
     const c = { server: normalizeServer(server), source: 'oauth', accessToken: tokens.access_token, clientId: APP_CLIENT_ID }
     if (tokens.refresh_token) c.refreshToken = tokens.refresh_token
@@ -69,8 +71,9 @@ export class OAuthApi {
       grant_type: 'refresh_token',
       refresh_token: c.refreshToken,
       client_id: c.clientId,
-      resource: mcpResource(c.server)
+      resource: apiResource(c.server)
     })
+    // Refresh tokens rotate: the new one replaces the old, which is now spent.
     return { ...c, accessToken: tokens.access_token, refreshToken: tokens.refresh_token || c.refreshToken }
   }
 

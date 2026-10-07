@@ -8,8 +8,7 @@ import '../shared/widgets.dart';
 import '../state/session.dart';
 
 /// Sign in, in the Stream look: browser sign-in where the platform allows
-/// it, CLI credentials when another client left some, an API key anywhere,
-/// and a demo for poking around offline.
+/// it, an API key anywhere, and a demo for poking around offline.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.session});
 
@@ -70,7 +69,6 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _form() {
     final busy = _session.signingIn;
     final oauthBlocked = _session.oauthUnavailable;
-    final cli = _session.cliCandidate;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const Center(child: ReqallMark(size: 72, radius: 16, glow: true)),
       const SizedBox(height: 18),
@@ -98,19 +96,6 @@ class _LoginScreenState extends State<LoginScreen> {
       if (oauthBlocked != null) ...[
         const SizedBox(height: 6),
         Text(oauthBlocked, textAlign: TextAlign.center, style: Rq.mono(size: 11, color: Rq.muted)),
-      ],
-      if (cli != null) ...[
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: busy ? null : _session.continueWithCli,
-          icon: const Icon(Icons.terminal_rounded, size: 18),
-          label: Text('Continue with CLI login · ${cli.host}'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Rq.text,
-            side: const BorderSide(color: Rq.border),
-            minimumSize: const Size.fromHeight(46),
-          ),
-        ),
       ],
       const SizedBox(height: 22),
       Row(children: [

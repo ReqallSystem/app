@@ -7,8 +7,9 @@ import 'package:http/http.dart' as http;
 import 'credentials.dart';
 
 /// OAuth 2.1 authorization-code + PKCE against the Reqall server, the same
-/// flow the CLI runs. The server accepts unregistered clients whose
-/// redirect_uri is a loopback address, so the app needs no registration.
+/// flow the CLI runs but for the REST API audience. The server accepts
+/// unregistered clients whose redirect_uri is a loopback address, so the app
+/// needs no registration.
 class Pkce {
   Pkce._(this.verifier, this.challenge);
 
@@ -34,8 +35,8 @@ String randomState([Random? random]) {
 /// A stable public client id for the app, derived like the CLI's.
 final String appClientId = sha256.convert(utf8.encode('reqall-app')).toString().substring(0, 32);
 
-/// RFC 8707 resource: tokens are bound to the server's MCP endpoint.
-String mcpResource(String server) => '${normalizeServer(server)}/mcp';
+/// RFC 8707 resource: tokens are bound to the server's REST API.
+String apiResource(String server) => '${normalizeServer(server)}/api';
 
 Uri authorizeUri({required String server, required String redirectUri, required Pkce pkce, required String state}) =>
     Uri.parse('${normalizeServer(server)}/oauth/authorize').replace(queryParameters: {
@@ -44,9 +45,9 @@ Uri authorizeUri({required String server, required String redirectUri, required 
       'response_type': 'code',
       'code_challenge': pkce.challenge,
       'code_challenge_method': 'S256',
-      'scope': 'mcp',
+      'scope': 'api',
       'state': state,
-      'resource': mcpResource(server),
+      'resource': apiResource(server),
     });
 
 class OAuthException implements Exception {
@@ -74,7 +75,7 @@ class OAuthApi {
       'code_verifier': verifier,
       'redirect_uri': redirectUri,
       'client_id': appClientId,
-      'resource': mcpResource(server),
+      'resource': apiResource(server),
     });
     return Credentials(
       server: normalizeServer(server),
@@ -85,13 +86,15 @@ class OAuthApi {
     );
   }
 
+  /// Refresh tokens rotate on every use, so the returned credentials carry
+  /// the new one; callers must persist it and never refresh concurrently.
   Future<Credentials> refresh(Credentials c) async {
     if (!c.canRefresh) throw const OAuthException('Nothing to refresh with');
     final tokens = await _token(c.server, {
       'grant_type': 'refresh_token',
       'refresh_token': c.refreshToken!,
       'client_id': c.clientId!,
-      'resource': mcpResource(c.server),
+      'resource': apiResource(c.server),
     });
     return c.withTokens(accessToken: tokens['access_token'] as String, refreshToken: tokens['refresh_token'] as String?);
   }

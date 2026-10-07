@@ -7,7 +7,7 @@ import { app, BrowserWindow, Menu, nativeImage, safeStorage, shell, ipcMain } fr
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Session } from './session.js'
-import { FileCredentialStore, findCliCredentials } from './credentials.js'
+import { FileCredentialStore } from './credentials.js'
 import { connect } from './bridge.js'
 import { runOAuth } from './oauth.js'
 
@@ -60,7 +60,6 @@ const keychain = {
 async function main() {
   session = new Session({
     store: new FileCredentialStore(path.join(app.getPath('userData'), 'credentials.bin'), keychain),
-    findCli: () => findCliCredentials(),
     runOAuth: (api, server, opts) => runOAuth(api, server, { ...opts, openExternal })
   })
   ;({ openDashboard } = connect({ ipcMain, session, send, openExternal }))
