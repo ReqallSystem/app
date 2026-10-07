@@ -86,6 +86,13 @@ jobs:
       - run: npx electron-builder ${{ matrix.flag }} --publish never -c.extraMetadata.version=${{ needs.check.outputs.version }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # PRs skip the upload, so check here that the expected packages exist.
+      - if: github.event_name == 'pull_request'
+        run: |
+          shopt -s nullglob
+          files=(dist/*.AppImage dist/*.tar.gz dist/*.dmg dist/*.exe)
+          printf '%s\n' "${files[@]}"
+          (( ${#files[@]} ))
       # Not on PRs: nothing there consumes it. Tag runs feed the release job below.
       - if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
